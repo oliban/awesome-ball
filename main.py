@@ -82,6 +82,31 @@ debug_mode = False
 DEBUG_BG_COLOR = (220, 180, 255)
 DEBUG_MATCH_POINT_LIMIT = 1
 
+# --- Weather Effect Constants ---
+WEATHER_TYPES = ["SUNNY", "RAINY", "WINDY", "SNOWY", "FOGGY"]
+WEATHER_EFFECTS = {
+    "SUNNY": {"ball_friction": 1.0, "gravity": 1.0, "background_color": (135, 206, 235)},  # Normal conditions
+    "RAINY": {"ball_friction": 0.85, "gravity": 1.05, "background_color": (100, 149, 180)},  # Slippery conditions
+    "WINDY": {"ball_friction": 0.95, "wind_force": 15.0, "background_color": (175, 196, 215)},  # Wind pushes objects
+    "SNOWY": {"ball_friction": 0.7, "gravity": 0.9, "background_color": (220, 230, 240)},  # Very slippery, lower gravity
+    "FOGGY": {"ball_friction": 0.98, "gravity": 1.0, "background_color": (200, 200, 200)}  # Reduced visibility
+}
+WEATHER_PARTICLE_COUNT = {
+    "SUNNY": 5,
+    "RAINY": 40,
+    "WINDY": 15,
+    "SNOWY": 20,
+    "FOGGY": 0
+}
+WEATHER_WIND_DIRECTION = 1  # 1 = right, -1 = left (for wind effects)
+WEATHER_WIND_CHANGE_TIMER = 0  # Timer for wind direction changes
+
+# Function to change wind direction
+def change_wind_direction():
+    global WEATHER_WIND_DIRECTION
+    WEATHER_WIND_DIRECTION = -WEATHER_WIND_DIRECTION
+    return WEATHER_WIND_DIRECTION
+
 # --- Game State Constants ---
 MATCH_POINT_LIMIT = 5
 GAME_WIN_LIMIT = 5
@@ -91,7 +116,7 @@ GOAL_MESSAGE_DURATION = 1.5
 # --- Power-up Constants ---
 POWERUP_TYPES = ["FLIGHT", "ROCKET_LAUNCHER", "BIG_PLAYER", "SUPER_JUMP",
                  "BALL_FREEZE", "SPEED_BOOST", "GOAL_SHIELD", "SHRINK_OPPONENT",
-                 "LOW_GRAVITY", "REVERSE_CONTROLS", "ENORMOUS_HEAD", "GOAL_ENLARGER"] # <<< Removed old, added new
+                 "LOW_GRAVITY", "REVERSE_CONTROLS", "ENORMOUS_HEAD", "GOAL_ENLARGER", "SWORD"] # <<< Removed old, added new
 POWERUP_SPAWN_INTERVAL_MIN = 15.0
 POWERUP_SPAWN_INTERVAL_MAX = 30.0
 POWERUP_DESCEND_SPEED = 100
@@ -124,6 +149,7 @@ POWERUP_ENORMOUS_HEAD_DURATION = 15.0
 POWERUP_ENORMOUS_HEAD_SCALE = 7.0 # <<< Changed scale
 POWERUP_GOAL_ENLARGER_DURATION = 15.0
 POWERUP_GOAL_ENLARGER_HEIGHT_INCREASE = 40
+POWERUP_SWORD_DURATION = 30.0  # Changed from 15.0 to 30.0 seconds
 # Removed FORCE_PUSH_RADIUS, FORCE_PUSH_FORCE, REFLECT_SHIELD_DURATION, REFLECT_SHIELD_COLOR
 
 
@@ -235,6 +261,16 @@ def draw_offscreen_arrow(s, ball, p_pos):
     ang = math.atan2(ty - ay, tx - ax); p1 = (ar_sz, 0); p2 = (-ar_sz / 2, -ar_sz / 2); p3 = (-ar_sz / 2, ar_sz / 2)
     cos_a, sin_a = math.cos(ang), math.sin(ang); p1r = (p1[0] * cos_a - p1[1] * sin_a, p1[0] * sin_a + p1[1] * cos_a); p2r = (p2[0] * cos_a - p2[1] * sin_a, p2[0] * sin_a + p2[1] * cos_a); p3r = (p3[0] * cos_a - p3[1] * sin_a, p3[0] * sin_a + p3[1] * cos_a)
     pts = [(ax + p1r[0], ay + p1r[1]), (ax + p2r[0], ay + p2r[1]), (ax + p3r[0], ay + p3r[1])]; pygame.draw.polygon(s, ARROW_RED, [(int(p[0]), int(p[1])) for p in pts])
+
+# --- SWORD Powerup Constants --- (Moved here)
+POWERUP_SWORD_DURATION = 30.0  # Increased from 15.0 to 30.0
+SWORD_COLOR = (192, 192, 192) # Silver
+SWORD_HILT_COLOR = (139, 69, 19) # Brown
+SWORD_LENGTH_FACTOR = 1.8 # Relative to torso length
+SWORD_WIDTH_FACTOR = 0.2 # Relative to limb width
+SWORD_HIT_FORCE = 10  # Decreased from original value to reduce ball power
+SWORD_PLAYER_HIT_FORCE = 500.0 # Horizontal force on player
+SWORD_PLAYER_UPWARD_BOOST = 250.0 # Upward force on player
 
 # --- Class Definitions ---
 class Particle: # ... (no change) ...
@@ -397,19 +433,204 @@ def create_explosion(x, y, radius, players, ball): # Added minimum bump
         ball.apply_force(push_vec_x * force_magnitude, push_vec_y * force_magnitude - ROCKET_BALL_UPWARD_BOOST, hitter='explosion')
     active_explosions.append(Explosion(x, y, radius))
 
+class WeatherParticle:
+    def __init__(self, weather_type, screen_width, screen_height):
+        self.weather_type = weather_type
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.reset()
+        
+    def reset(self):
+        if self.weather_type == "SUNNY":
+            # Sun rays
+            self.x = random.randint(0, self.screen_width)
+            self.y = random.randint(0, self.screen_height // 3)
+            self.size = random.randint(2, 5)
+            self.speed = random.uniform(10, 30)
+            self.color = (255, 255, 200, random.randint(50, 150))
+            self.lifespan = random.uniform(2.0, 5.0)
+            self.angle = random.uniform(0, 2 * math.pi)
+            
+        elif self.weather_type == "RAINY":
+            # Rain drops
+            self.x = random.randint(0, self.screen_width)
+            self.y = random.randint(-50, 0)
+            self.size = random.randint(1, 2)
+            self.length = random.randint(5, 15)
+            self.speed = random.uniform(200, 400)
+            self.color = (120, 160, 255, random.randint(150, 220))
+            self.lifespan = None  # Will reset when off-screen
+            
+        elif self.weather_type == "WINDY":
+            # Leaf/debris particles
+            self.x = random.randint(-50, self.screen_width + 50)
+            self.y = random.randint(0, self.screen_height - 100)
+            self.size = random.randint(2, 5)
+            self.speed = random.uniform(100, 200) * WEATHER_WIND_DIRECTION
+            self.vertical_speed = random.uniform(-20, 20)
+            self.color = random.choice([
+                (139, 69, 19, 200),  # Brown
+                (34, 139, 34, 200),   # Green
+                (255, 140, 0, 200),   # Orange
+                (255, 215, 0, 200)    # Yellow
+            ])
+            self.lifespan = None  # Will reset when off-screen
+            self.angle = 0
+            self.rotation_speed = random.uniform(-5, 5)
+            
+        elif self.weather_type == "SNOWY":
+            # Snowflakes
+            self.x = random.randint(0, self.screen_width)
+            self.y = random.randint(-50, 0)
+            self.size = random.randint(2, 4)
+            self.speed = random.uniform(30, 80)
+            self.horizontal_drift = random.uniform(-20, 20)
+            self.color = (255, 255, 255, random.randint(180, 250))
+            self.lifespan = None  # Will reset when off-screen
+            
+        elif self.weather_type == "FOGGY":
+            # Fog patches (not used much since we'll use a global fog overlay)
+            self.x = random.randint(0, self.screen_width)
+            self.y = random.randint(0, self.screen_height)
+            self.size = random.randint(30, 80)
+            self.speed = random.uniform(5, 15)
+            self.color = (255, 255, 255, random.randint(5, 20))
+            self.lifespan = random.uniform(3.0, 8.0)
+            
+    def update(self, dt):
+        if self.lifespan is not None:
+            self.lifespan -= dt
+            if self.lifespan <= 0:
+                self.reset()
+                return
+        
+        if self.weather_type == "SUNNY":
+            # Sun rays move outward from a point
+            self.x += math.cos(self.angle) * self.speed * dt
+            self.y += math.sin(self.angle) * self.speed * dt
+            
+            # If off-screen, reset
+            if (self.x < -10 or self.x > self.screen_width + 10 or 
+                self.y < -10 or self.y > self.screen_height + 10):
+                self.reset()
+                
+        elif self.weather_type == "RAINY":
+            # Rain falls straight down (slightly angled)
+            self.x -= 20 * dt  # Slight angle
+            self.y += self.speed * dt
+            
+            # If off-screen, reset to top
+            if self.y > self.screen_height:
+                self.reset()
+                
+        elif self.weather_type == "WINDY":
+            # Wind blows objects sideways with some up/down movement
+            self.x += self.speed * dt
+            self.y += self.vertical_speed * dt
+            self.angle += self.rotation_speed * dt
+            
+            # Occasionally change vertical direction
+            if random.random() < 0.02:
+                self.vertical_speed = random.uniform(-20, 20)
+                
+            # If off-screen, reset
+            if ((WEATHER_WIND_DIRECTION > 0 and self.x > self.screen_width + 50) or
+                (WEATHER_WIND_DIRECTION < 0 and self.x < -50) or
+                self.y < -50 or self.y > self.screen_height + 50):
+                self.reset()
+                
+        elif self.weather_type == "SNOWY":
+            # Snow falls down with some horizontal drift
+            self.y += self.speed * dt
+            self.x += self.horizontal_drift * dt
+            
+            # Occasionally change horizontal drift
+            if random.random() < 0.05:
+                self.horizontal_drift = random.uniform(-20, 20)
+                
+            # If off-screen, reset to top
+            if self.y > self.screen_height or self.x < -10 or self.x > self.screen_width + 10:
+                self.reset()
+                
+        elif self.weather_type == "FOGGY":
+            # Fog drifts slowly
+            self.x += self.speed * dt
+            
+            # If off-screen, reset
+            if self.x > self.screen_width + self.size:
+                self.reset()
+    
+    def draw(self, screen):
+        if self.weather_type == "SUNNY":
+            # Draw sun ray as a small circle
+            surf = pygame.Surface((self.size * 2, self.size * 2), pygame.SRCALPHA)
+            pygame.draw.circle(surf, self.color, (self.size, self.size), self.size)
+            screen.blit(surf, (int(self.x - self.size), int(self.y - self.size)))
+            
+        elif self.weather_type == "RAINY":
+            # Draw rain drop as a line
+            start_pos = (int(self.x), int(self.y))
+            end_pos = (int(self.x - self.length * 0.5), int(self.y + self.length))
+            pygame.draw.line(screen, self.color, start_pos, end_pos, self.size)
+            
+        elif self.weather_type == "WINDY":
+            # Draw wind debris as rotating rectangles
+            rect_surf = pygame.Surface((self.size * 3, self.size), pygame.SRCALPHA)
+            pygame.draw.rect(rect_surf, self.color, (0, 0, self.size * 3, self.size))
+            rotated = pygame.transform.rotate(rect_surf, self.angle * 57.3)  # Convert to degrees
+            screen.blit(rotated, (int(self.x - rotated.get_width() // 2),
+                                int(self.y - rotated.get_height() // 2)))
+            
+        elif self.weather_type == "SNOWY":
+            # Draw snowflake as a small circle
+            surf = pygame.Surface((self.size * 2, self.size * 2), pygame.SRCALPHA)
+            pygame.draw.circle(surf, self.color, (self.size, self.size), self.size)
+            screen.blit(surf, (int(self.x - self.size), int(self.y - self.size)))
+            
+        elif self.weather_type == "FOGGY":
+            # Draw fog patch as a transparent circle
+            surf = pygame.Surface((self.size * 2, self.size * 2), pygame.SRCALPHA)
+            pygame.draw.circle(surf, self.color, (self.size, self.size), self.size)
+            screen.blit(surf, (int(self.x - self.size), int(self.y - self.size)))
+
 class StickMan: # Updated powerup dict/handling
-    def __init__(self, x, y, facing=1):
+    # Add team_color and team_accent to the arguments, with defaults
+    def __init__(self, x, y, facing=1, team_color=WHITE, team_accent=BLACK):
         self.x = x; self.y = y; self.base_y = y; self.width = 20; self.height = 80; self.vx = 0; self.vy = 0; self.is_jumping = False; self.is_kicking = False; self.kick_timer = 0; self.kick_duration = 18; self.walk_cycle_timer = 0.0;
+
+        # --- Assign Team Colors FIRST ---
+        # Assign the passed arguments to the instance attributes
+        self.team_color = team_color
+        self.team_accent = team_accent
+        self.eye_color = BLACK # Assign eye color here too
+
+        # --- Base size attributes ---
         self.base_head_radius = 12; self.base_torso_length = 36; self.base_limb_width = 10; self.base_upper_arm_length = 12; self.base_forearm_length = 12; self.base_thigh_length = 14; self.base_shin_length = 14; self.base_nose_length = self.base_head_radius * 0.5; self.base_nose_width = self.base_head_radius * 0.3
+        # --- Current size attributes (initially same as base) ---
         self.head_radius = self.base_head_radius; self.torso_length = self.base_torso_length; self.limb_width = self.base_limb_width; self.upper_arm_length = self.base_upper_arm_length; self.forearm_length = self.base_forearm_length; self.thigh_length = self.base_thigh_length; self.shin_length = self.base_shin_length; self.current_nose_length = self.base_nose_length; self.current_nose_width = self.base_nose_width
-        self.torso_colors = [P2_COLOR_MAIN, P2_COLOR_WHITE, P2_COLOR_ACCENT]; self.arm_colors = [P2_COLOR_ACCENT, P2_COLOR_MAIN]; self.leg_colors = [P2_COLOR_WHITE, P2_COLOR_ACCENT]; self.l_upper_arm_angle = 0; self.r_upper_arm_angle = 0; self.l_forearm_angle = 0; self.r_forearm_angle = 0; self.l_thigh_angle = 0; self.r_thigh_angle = 0; self.l_shin_angle = 0; self.r_shin_angle = 0; self.head_pos = (0, 0); self.neck_pos = (0, 0); self.hip_pos = (0, 0); self.shoulder_pos = (0, 0); self.l_elbow_pos = (0, 0); self.r_elbow_pos = (0, 0); self.l_hand_pos = (0, 0); self.r_hand_pos = (0, 0); self.l_knee_pos = (0, 0); self.r_knee_pos = (0, 0); self.l_foot_pos = (0, 0); self.r_foot_pos = (0, 0); self.body_rect = pygame.Rect(0,0,0,0); self.facing_direction = facing; self.on_other_player_head = False
+
+        # --- Use Team Colors ---
+        # This block now correctly uses the assigned self.team_color and self.team_accent
+        self.torso_colors = [self.team_color, self.team_accent, self.team_color]
+        self.arm_colors = [self.team_accent, self.team_color]
+        self.leg_colors = [self.team_color, self.team_accent]
+        self.cap_color = self.team_accent # Use accent for cap
+        self.cap_brim_color = BLACK
+
+        # --- Animation & State Attributes ---
+        self.l_upper_arm_angle = 0; self.r_upper_arm_angle = 0; self.l_forearm_angle = 0; self.r_forearm_angle = 0; self.l_thigh_angle = 0; self.r_thigh_angle = 0; self.l_shin_angle = 0; self.r_shin_angle = 0; self.head_pos = (0, 0); self.neck_pos = (0, 0); self.hip_pos = (0, 0); self.shoulder_pos = (0, 0); self.l_elbow_pos = (0, 0); self.r_elbow_pos = (0, 0); self.l_hand_pos = (0, 0); self.r_hand_pos = (0, 0); self.l_knee_pos = (0, 0); self.r_knee_pos = (0, 0); self.l_foot_pos = (0, 0); self.r_foot_pos = (0, 0); self.body_rect = pygame.Rect(0,0,0,0); self.facing_direction = facing; self.on_other_player_head = False
+
+        # --- Wing Attributes (if applicable) ---
         self.wing_color = (173, 216, 230); self.wing_outline_color = (50, 50, 100); self.wing_rest_angle_offset = math.pi * 0.1 + (math.pi / 6); self.l_wing_base_angle = math.pi + self.wing_rest_angle_offset; self.r_wing_base_angle = -self.wing_rest_angle_offset; self.l_wing_upper_angle = self.l_wing_base_angle - 0.4; self.l_wing_lower_angle = self.l_wing_base_angle + 0.6; self.r_wing_upper_angle = self.r_wing_base_angle + 0.4; self.r_wing_lower_angle = self.r_wing_base_angle - 0.6; self.wing_flap_timer = 0.0; self.wing_flap_duration = 0.2; self.wing_flapping = False; self.wing_flap_magnitude = math.pi * 0.4; self.wing_upper_lobe_size = (30, 22); self.wing_lower_lobe_size = (28, 25)
-        self.eye_color = BLACK
-        if facing == 1: self.cap_color = (50, 50, 50)
-        else: self.cap_color = ITALY_RED
-        self.cap_brim_color = (40, 40, 40)
-        self.active_powerups = {} # Dict: {"TYPE": value}
-        self.is_flying = False; self.is_big = False; self.is_shrunk = False; self.is_enormous_head = False; self.jump_power = BASE_JUMP_POWER; self.player_speed = BASE_PLAYER_SPEED; self.is_controls_reversed = False
+
+        # --- Sword Attributes ---
+        self.is_sword = False
+        self.sword_angle = 0
+
+        # --- Powerups and State ---
+        self.active_powerups = {} # Updated powerup dict/handling
+        self.is_flying = False; self.is_big = False; self.is_shrunk = False; self.is_enormous_head = False; self.is_penguin = False # Added penguin state
+        self.jump_power = BASE_JUMP_POWER; self.player_speed = BASE_PLAYER_SPEED; self.is_controls_reversed = False
         self.head_pulse_timer = 0.0 # For enormous head pulse
         self.gun_anim_timer = random.uniform(0, 2 * math.pi); self.gun_angle_offset = 0.0; self.gun_tip_pos = (0, 0)
         self.is_tumbling = False; self.tumble_timer = 0.0; self.rotation_angle = 0.0; self.rotation_velocity = 0.0
@@ -455,6 +676,8 @@ class StickMan: # Updated powerup dict/handling
         elif powerup_type == "GOAL_ENLARGER":
              if self is player1: global p2_goal_enlarged_timer; p2_goal_enlarged_timer = POWERUP_GOAL_ENLARGER_DURATION; print("P2 Goal Enlarged!")
              elif self is player2: global p1_goal_enlarged_timer; p1_goal_enlarged_timer = POWERUP_GOAL_ENLARGER_DURATION; print("P1 Goal Enlarged!")
+        elif powerup_type == "SWORD":
+             self.active_powerups["SWORD"] = POWERUP_SWORD_DURATION; self.is_sword = True; print(f"Sword Mode! {POWERUP_SWORD_DURATION:.1f}s")
     def apply_shrink(self):
          self.active_powerups["SHRUNK"] = POWERUP_SHRINK_PLAYER_DURATION; self.is_shrunk = True
          if "BIG_PLAYER" in self.active_powerups: del self.active_powerups["BIG_PLAYER"]; self.is_big = False
@@ -511,8 +734,18 @@ class StickMan: # Updated powerup dict/handling
     def start_kick(self):
         if self.is_tumbling: return
         if not self.is_kicking:
-            if "ROCKET_LAUNCHER" in self.active_powerups: self.fire_rocket()
-            else: self.is_kicking = True; self.kick_timer = 0; self.vx = 0
+            if "ROCKET_LAUNCHER" in self.active_powerups: 
+                self.fire_rocket()
+            else: 
+                self.is_kicking = True
+                self.kick_timer = 0
+                self.vx = 0
+                
+                # Use wall_hit sound as sword swing sound when player has sword
+                if self.is_sword:
+                    play_sound(loaded_sounds['wall_hit'])
+                else:
+                    play_sound(loaded_sounds['kick'])
     def fire_rocket(self):
         global active_rockets
         if "ROCKET_LAUNCHER" not in self.active_powerups: return
@@ -657,9 +890,46 @@ class StickMan: # Updated powerup dict/handling
         return None
     def get_head_position_radius(self): return self.head_pos, self.head_radius
     def get_body_rect(self): return self.body_rect
+    
+    def get_sword_position(self):
+        """Return sword data for collision detection: (tip_x, tip_y, base_x, base_y, angle)"""
+        if not self.is_sword:
+            return None
+        
+        hand_pos = self.r_hand_pos if self.facing_direction == 1 else self.l_hand_pos
+        sword_len = self.torso_length * SWORD_LENGTH_FACTOR
+        
+        # Calculate sword tip and base positions based on hand position and sword angle
+        tip_x = hand_pos[0] + sword_len * math.cos(self.sword_angle)
+        tip_y = hand_pos[1] + sword_len * math.sin(self.sword_angle)
+        
+        return (tip_x, tip_y, hand_pos[0], hand_pos[1], self.sword_angle)
+        
     def draw(self, screen): # ... (no change) ...
         all_points = [self.head_pos, self.neck_pos, self.hip_pos, self.shoulder_pos, self.l_elbow_pos, self.r_elbow_pos, self.l_hand_pos, self.r_hand_pos, self.l_knee_pos, self.r_knee_pos, self.l_foot_pos, self.r_foot_pos]
         if "ROCKET_LAUNCHER" in self.active_powerups: all_points.append(self.gun_tip_pos)
+        
+        # Add sword tip point to all_points if the player has a sword
+        if self.is_sword:
+            sword_data = self.get_sword_position()
+            if sword_data:
+                tip_x, tip_y, base_x, base_y, angle = sword_data
+                all_points.append((tip_x, tip_y))  # Add sword tip to points
+                
+                # Add more points around the sword to ensure proper rendering
+                sword_len = self.torso_length * SWORD_LENGTH_FACTOR
+                sword_width = self.limb_width * SWORD_WIDTH_FACTOR
+                
+                # Calculate points at the edges of the sword for proper bounding box
+                perp_x = math.cos(angle + math.pi/2) * sword_width
+                perp_y = math.sin(angle + math.pi/2) * sword_width
+                
+                # Add edges of the sword
+                all_points.append((tip_x + perp_x, tip_y + perp_y))
+                all_points.append((tip_x - perp_x, tip_y - perp_y))
+                all_points.append((base_x + perp_x, base_y + perp_y))
+                all_points.append((base_x - perp_x, base_y - perp_y))
+        
         min_x = min(p[0] for p in all_points) - self.head_radius - self.limb_width; max_x = max(p[0] for p in all_points) + self.head_radius + self.limb_width
         min_y = min(p[1] for p in all_points) - self.head_radius - self.limb_width; max_y = max(p[1] for p in all_points) + self.head_radius + self.limb_width
         if "FLIGHT" in self.active_powerups:
@@ -732,6 +1002,121 @@ class StickMan: # Updated powerup dict/handling
             q_surf = q_font.render("?", True, RED)
             q_rect = q_surf.get_rect(centerx=int(self.head_pos[0]), bottom=int(self.head_pos[1] - self.head_radius - 5)); screen.blit(q_surf, q_rect)
 
+        # --- Draw Sword --- # Added
+        if self.is_sword:
+            print(f"Drawing sword for player {1 if self.facing_direction == 1 else 2}") if debug_mode else None
+            hand_pos = self.r_hand_pos if self.facing_direction == 1 else self.l_hand_pos
+            o_hand_pos = offset_pos(hand_pos)
+            # REMOVED local constant definitions - Use global ones
+            sword_len = self.torso_length * SWORD_LENGTH_FACTOR
+            sword_width = self.limb_width * SWORD_WIDTH_FACTOR
+            hilt_length = sword_width * 3 # Relative to sword width
+            hilt_width = sword_width * 3 # Hilt crossguard width
+            
+            # Determine sword angle based on kick animation or default holding angle
+            kick_progress = 0.0
+            if self.is_kicking:
+                # Ensure kick_duration is not zero to avoid division error
+                if self.kick_duration > 0:
+                    kick_progress = min(self.kick_timer / self.kick_duration, 1.0)
+                else:
+                    kick_progress = 1.0 # Or 0.0, depending on desired end state
+
+                windup_end = 0.20; impact_start = 0.25; impact_end = 0.50; follow_end = 1.0
+                if kick_progress < impact_start: # Windup
+                    swing_prog = kick_progress / impact_start if impact_start > 0 else 1.0
+                    base_angle_offset = -math.pi * 0.8 * (swing_prog**2)
+                elif kick_progress < follow_end: # Swing + Follow
+                    # Ensure denominator is not zero
+                    duration_follow = follow_end - impact_start
+                    follow_prog = (kick_progress - impact_start) / duration_follow if duration_follow > 0 else 1.0
+
+                    max_forward_angle = math.pi * 0.3
+                    if follow_prog < 0.5:
+                       ease_in_swing = (follow_prog * 2)**1.5
+                       base_angle_offset = -math.pi*0.8 + (max_forward_angle - (-math.pi*0.8)) * ease_in_swing
+                    else:
+                       ease_out_follow = 1.0 - ((follow_prog - 0.5) * 2)**1.5
+                       base_angle_offset = max_forward_angle * ease_out_follow
+                else: # End of kick
+                     base_angle_offset = 0
+            else: # Idle holding angle
+                base_angle_offset = -math.pi / 4
+
+            # Set the angle for drawing and collision detection
+            # Old angle calculation that worked for hitting the ball
+            if self.facing_direction == 1:
+                self.sword_angle = base_angle_offset * self.facing_direction + (-math.pi / 2)  # Right-facing player
+            else:
+                self.sword_angle = base_angle_offset * self.facing_direction + (math.pi/2)  # Left-facing player
+            
+            if debug_mode:
+                print(f"Sword angle: {self.sword_angle}, Hand pos: {hand_pos}, Offset hand: {o_hand_pos}")
+                
+            # Play sword swing sound if kicking
+            # Removed duplicate sound playing since we now handle it in start_kick
+
+            # Draw the sword based on reference image
+            # Calculate coordinates in world space
+            sword_base_x = hand_pos[0]
+            sword_base_y = hand_pos[1]
+            
+            # Calculate blade coordinates
+            blade_length = sword_len * 1.2  # Make blade longer
+            blade_width = sword_width * 0.6  # Make blade thinner
+            blade_start_x = sword_base_x
+            blade_start_y = sword_base_y
+            blade_end_x = blade_start_x + blade_length * math.cos(self.sword_angle)
+            blade_end_y = blade_start_y + blade_length * math.sin(self.sword_angle)
+            blade_center_x = blade_start_x + (blade_length/2) * math.cos(self.sword_angle)
+            blade_center_y = blade_start_y + (blade_length/2) * math.sin(self.sword_angle)
+            
+            # Calculate crossguard coordinates (perpendicular to blade)
+            crossguard_angle = self.sword_angle + math.pi/2
+            crossguard_length = hilt_width * 2
+            crossguard_width = blade_width * 1.5
+            crossguard_center_x = sword_base_x
+            crossguard_center_y = sword_base_y
+            
+            # Calculate handle coordinates (opposite direction from blade)
+            handle_length = sword_len * 0.3
+            handle_width = blade_width * 0.8
+            handle_center_x = sword_base_x - (handle_length/2) * math.cos(self.sword_angle)
+            handle_center_y = sword_base_y - (handle_length/2) * math.sin(self.sword_angle)
+            
+            # Draw handle (dark brown)
+            draw_rotated_rectangle(screen, (101, 67, 33), 
+                                  (handle_center_x, handle_center_y), 
+                                  handle_length, handle_width, 
+                                  self.sword_angle)
+            
+            # Draw crossguard (metallic silver)
+            draw_rotated_rectangle(screen, (169, 169, 169), 
+                                  (crossguard_center_x, crossguard_center_y), 
+                                  crossguard_length, crossguard_width, 
+                                  crossguard_angle)
+            
+            # Draw blade (metallic silver with gradient)
+            # Main blade
+            draw_rotated_rectangle(screen, (192, 192, 192), 
+                                  (blade_center_x, blade_center_y), 
+                                  blade_length, blade_width, 
+                                  self.sword_angle)
+            
+            # Blade edge highlight
+            blade_edge_width = max(1, int(blade_width * 0.3))
+            pygame.draw.line(screen, (220, 220, 220), 
+                            (int(blade_start_x), int(blade_start_y)), 
+                            (int(blade_end_x), int(blade_end_y)), 
+                            blade_edge_width)
+            
+            # Blade tip highlight
+            pygame.draw.circle(screen, (220, 220, 220), 
+                              (int(blade_end_x), int(blade_end_y)), 
+                              int(blade_width * 0.4))
+
+        # --- Tumble Rotation and Blitting ---
+
 
 # --- Ball Class ---
 # ... (Ball class unchanged) ...
@@ -744,11 +1129,41 @@ class Ball:
         if self.is_frozen: return
         self.vx += force_x; self.vy += force_y; self.last_hit_by = hitter
     def update(self, dt):
+        if debug_mode and dt > 0:  # Add debug output for ball height
+            screen_height_percent = ((SCREEN_HEIGHT - self.y) / SCREEN_HEIGHT) * 100
+            print(f"Ball height: {SCREEN_HEIGHT - self.y:.1f} ({screen_height_percent:.1f}% of screen)")
+            
         if self.freeze_effect_timer > 0: self.freeze_effect_timer -= dt
         if self.is_frozen: return False
-        self.rotation_angle += self.vx * 0.015; self.rotation_angle %= (2 * math.pi);
-        self.vy += GRAVITY; self.vx *= BALL_FRICTION; self.x += self.vx; self.y += self.vy
-        hit_ground = False; hit_wall_this_frame = False; hit_shield_this_frame = False
+        
+        # Get weather effects for current weather
+        weather_effect = WEATHER_EFFECTS.get(current_weather, WEATHER_EFFECTS["SUNNY"])
+        
+        # Apply gravity based on weather
+        current_gravity = GRAVITY * weather_effect.get("gravity", 1.0)
+        
+        # Apply friction based on weather
+        current_ball_friction = BALL_FRICTION * weather_effect.get("ball_friction", 1.0)
+        
+        # Apply wind force if in windy weather
+        if current_weather == "WINDY":
+            wind_force = weather_effect.get("wind_force", 0.0)
+            self.vx += (wind_force * WEATHER_WIND_DIRECTION * 0.01 * dt)
+        
+        # Update physics with weather-modified values
+        self.rotation_angle += self.vx * 0.015
+        self.rotation_angle %= (2 * math.pi)
+        self.vy += current_gravity
+        self.vx *= current_ball_friction
+        self.x += self.vx
+        self.y += self.vy
+        
+        hit_ground = False
+        hit_wall_this_frame = False
+        hit_shield_this_frame = False
+        
+        # REMOVED DUPLICATE PHYSICS CALCULATION HERE
+        
         current_goal_height_p1 = GOAL_HEIGHT + (POWERUP_GOAL_ENLARGER_HEIGHT_INCREASE if p1_goal_enlarged_timer > 0 else 0)
         current_goal_y_p1 = GOAL_Y_POS - (POWERUP_GOAL_ENLARGER_HEIGHT_INCREASE if p1_goal_enlarged_timer > 0 else 0)
         current_goal_height_p2 = GOAL_HEIGHT + (POWERUP_GOAL_ENLARGER_HEIGHT_INCREASE if p2_goal_enlarged_timer > 0 else 0)
@@ -806,7 +1221,23 @@ clock = pygame.time.Clock()
 # ... (sound loading unchanged) ...
 def load_sounds(sound_dir="sounds"):
     sounds = {}
-    sound_files = {"kick": ["kick_ball1.wav", "kick_ball2.wav"], "jump": ["jump1.wav"], "land": ["land1.wav"],"wall_hit": ["wall_hit1.wav"], "player_bump": ["player_bump1.wav"], "headbutt": ["headbutt1.wav"], "body_hit": ["body_hit1.wav"], "combo": ["combo_sparkle1.wav", "combo_sparkle2.wav", "combo_sparkle3.wav", "combo_sparkle4.wav"], "ball_bounce": ["ball_bounce1.wav"], "nils_wins": ["nils_wins.wav"], "harry_wins": ["harry_wins.wav"], "nils_ahead": ["nils_ahead.wav"], "harry_ahead": ["harry_ahead.wav"], "super_jackpot": ["super_jackpot.wav"]}
+    sound_files = {
+        "kick": ["kick_ball1.wav", "kick_ball2.wav"],
+        "jump": ["jump1.wav"],
+        "land": ["land1.wav"],
+        "wall_hit": ["wall_hit1.wav"],
+        "player_bump": ["player_bump1.wav"],
+        "headbutt": ["headbutt1.wav"],
+        "body_hit": ["body_hit1.wav"],
+        "combo": ["combo_sparkle1.wav", "combo_sparkle2.wav", "combo_sparkle3.wav", "combo_sparkle4.wav"],
+        "ball_bounce": ["ball_bounce1.wav"],
+        "nils_wins": ["nils_wins.wav"],
+        "harry_wins": ["harry_wins.wav"],
+        "nils_ahead": ["nils_ahead.wav"],
+        "harry_ahead": ["harry_ahead.wav"],
+        "super_jackpot": ["super_jackpot.wav"],
+        "sword_hit": ["sword_hit.wav"] # Sound for sword hitting objects
+    }
     for name, filenames in sound_files.items():
         sounds[name] = []
         for filename in filenames:
@@ -858,9 +1289,10 @@ loaded_sounds = load_sounds()
 
 # --- Player/Ball/Font/Powerup Setup ---
 active_powerups = []
-player1 = StickMan(SCREEN_WIDTH // 4, GROUND_Y, facing=1); player2 = StickMan(SCREEN_WIDTH * 3 // 4, GROUND_Y, facing=-1)
+# Pass team colors during instantiation
+player1 = StickMan(SCREEN_WIDTH // 4, GROUND_Y, facing=1, team_color=P1_COLOR_MAIN, team_accent=P1_COLOR_ACCENT)
+player2 = StickMan(SCREEN_WIDTH * 3 // 4, GROUND_Y, facing=-1, team_color=P2_COLOR_MAIN, team_accent=P2_COLOR_ACCENT) # Pass P2 colors
 player_list = [player1, player2]
-player1.torso_colors = [P1_COLOR_MAIN, P1_COLOR_ACCENT, P1_COLOR_MAIN]; player1.arm_colors = [P1_COLOR_ACCENT, P1_COLOR_MAIN]; player1.leg_colors = [P1_COLOR_MAIN, P1_COLOR_ACCENT]
 ball = Ball(SCREEN_WIDTH // 2, GROUND_Y - 20, 15)
 font_large = pygame.font.Font(None, 50); font_medium = pygame.font.Font(None, 36); font_small = pygame.font.Font(None, 28)
 font_timestamp = pygame.font.Font(None, 20); font_goal = pygame.font.Font(None, 80)
@@ -891,6 +1323,11 @@ jackpot_triggered_this_match = False
 p1_goal_enlarged_timer = 0.0
 p2_goal_enlarged_timer = 0.0
 
+# --- Weather Variables ---
+current_weather = random.choice(WEATHER_TYPES)
+weather_particles = []
+weather_wind_change_timer = 15.0  # Time until wind direction changes
+
 
 # --- Reset/Start Functions ---
 def reset_positions(): # Keeps powerups active, resets player state only
@@ -904,7 +1341,7 @@ def reset_positions(): # Keeps powerups active, resets player state only
     current_hit_count = 0; ball_was_on_ground = False; p1_can_headbutt = True; p2_can_headbutt = True; p1_body_collision_timer = 0; p2_body_collision_timer = 0;
     active_rockets = []; active_explosions = []
 def start_new_match(): # Full reset for new match
-    global player1_score, player2_score, match_active, match_winner, match_over_timer, match_end_sound_played, announcement_queue, powerup_spawn_timer, active_powerups, ball_freeze_timer, p1_shield_active, p1_shield_timer, p2_shield_active, p2_shield_timer, jackpot_triggered_this_match, p1_goal_enlarged_timer, p2_goal_enlarged_timer
+    global player1_score, player2_score, match_active, match_winner, match_over_timer, match_end_sound_played, announcement_queue, powerup_spawn_timer, active_powerups, ball_freeze_timer, p1_shield_active, p1_shield_timer, p2_shield_active, p2_shield_timer, jackpot_triggered_this_match, p1_goal_enlarged_timer, p2_goal_enlarged_timer, current_weather, weather_particles, weather_wind_change_timer
     player1_score = 0; player2_score = 0; match_active = True; match_winner = None; match_over_timer = 0.0; match_end_sound_played = False
     announcement_queue = []; reset_positions()
     player1.active_powerups = {}; player1.is_flying = False; player1.is_big = False; player1.is_shrunk = False; player1.is_enormous_head = False; player1.jump_power = BASE_JUMP_POWER; player1.player_speed = BASE_PLAYER_SPEED; player1.calculate_current_sizes()
@@ -916,7 +1353,16 @@ def start_new_match(): # Full reset for new match
     player1.randomize_nose(); player2.randomize_nose()
     powerup_spawn_timer = random.uniform(POWERUP_SPAWN_INTERVAL_MIN, POWERUP_SPAWN_INTERVAL_MAX)
     jackpot_triggered_this_match = False
-    print("Starting new match.")
+    
+    # Set up new weather conditions for this match
+    current_weather = random.choice(WEATHER_TYPES)
+    weather_particles = []
+    weather_wind_change_timer = 15.0
+    # Create weather particles
+    for _ in range(WEATHER_PARTICLE_COUNT.get(current_weather, 0)):
+        weather_particles.append(WeatherParticle(current_weather, SCREEN_WIDTH, SCREEN_HEIGHT))
+    
+    print(f"Starting new match with {current_weather} weather.")
 def start_new_game(): # Full reset
     global p1_games_won, p2_games_won, game_scores, game_over, overall_winner, announcement_queue, game_over_sound_played, active_powerups
     p1_games_won = 0; p2_games_won = 0; game_scores = []; game_over = False; overall_winner = None; game_over_sound_played = False
@@ -927,9 +1373,61 @@ def start_new_game(): # Full reset
 # ... (unchanged) ...
 def handle_player_ball_collisions(player, ball, can_headbutt, body_collision_timer, is_ball_airborne):
     global current_hit_count
-    kick_performed = False; headbutt_performed = False; score_increase = False; kick_pt = None
+    kick_performed = False; headbutt_performed = False; score_increase = False; kick_pt = None; sword_hit = False
+    
+    # Check for sword collision with the ball
+    if player.is_sword and player.is_kicking:  # Only check when the player has a sword and is kicking (swinging)
+        sword_data = player.get_sword_position()
+        if sword_data:
+            tip_x, tip_y, base_x, base_y, angle = sword_data
+            
+            # Check if ball is colliding with the sword line segment
+            # Using line-circle intersection with increased radius for easier hits
+            dx = tip_x - base_x
+            dy = tip_y - base_y
+            line_len_sq = dx*dx + dy*dy
+            
+            if line_len_sq > 0:  # Avoid division by zero
+                # Calculate closest point on line to circle center
+                t = max(0, min(1, ((ball.x - base_x) * dx + (ball.y - base_y) * dy) / line_len_sq))
+                closest_x = base_x + t * dx
+                closest_y = base_y + t * dy
+                
+                # Check if the distance from closest point to ball center is less than ball radius
+                # Use increased collision radius for sword (2.5x the ball radius) to match the new graphic
+                dist_sq = (closest_x - ball.x)**2 + (closest_y - ball.y)**2
+                if dist_sq < (ball.radius * 2.5)**2:
+                    # We have a collision!
+                    if player.kick_duration <= 0: progress = 1.0
+                    else: progress = player.kick_timer / player.kick_duration
+                    
+                    # Only apply force during active part of swing
+                    if 0.25 < progress < 0.6:
+                        # Direction is perpendicular to the sword
+                        perp_x = -dy / math.sqrt(line_len_sq)  # Normalized
+                        perp_y = dx / math.sqrt(line_len_sq)   # Normalized
+                        
+                        # Apply force in the perpendicular direction with player's facing
+                        force_x = SWORD_HIT_FORCE * perp_x * player.facing_direction
+                        force_y = -SWORD_HIT_FORCE * 0.6  # Increased upward component (was 0.05)
+                        
+                        # Apply force with player velocity factor
+                        if player.vx != 0:
+                            force_x += player.vx * 0.5  # Reduced from 1.0
+                        
+                        # Apply force to ball
+                        ball.apply_force(force_x, force_y, hitter=player)
+                        play_sound(loaded_sounds.get('sword_hit', loaded_sounds['wall_hit']))
+                        sword_hit = True
+                        kick_pt = (closest_x, closest_y)  # Use collision point as kick point for particles
+                        
+                        if is_ball_airborne:
+                            current_hit_count += 1
+                            score_increase = True
+    
+    # Original kick detection logic
     local_kick_point = player.get_kick_impact_point()
-    if local_kick_point:
+    if local_kick_point and not sword_hit:  # Only check normal kicks if sword didn't hit
         dist_x = local_kick_point[0] - ball.x; dist_y = local_kick_point[1] - ball.y; dist_sq = dist_x**2 + dist_y**2
         eff_kick_rad = KICK_RADIUS_NORMAL + (KICK_RADIUS_FALLING_BONUS if ball.vy > BALL_FALLING_VELOCITY_THRESHOLD else 0)
         if dist_sq < (ball.radius + eff_kick_rad * (player.head_radius / player.base_head_radius))**2:
@@ -940,6 +1438,8 @@ def handle_player_ball_collisions(player, ball, can_headbutt, body_collision_tim
                  if player.vy < 0: kick_y += player.vy * 0.4
                  ball.apply_force(kick_x, kick_y, hitter=player); kick_performed = True; kick_pt = local_kick_point; play_sound(loaded_sounds['kick']);
                  if is_ball_airborne: current_hit_count += 1; score_increase = True
+    
+    # Rest of the function remains the same
     head_pos, head_radius = player.get_head_position_radius(); dist_x_head = ball.x - head_pos[0]; dist_y_head = ball.y - head_pos[1]
     dist_head_sq = dist_x_head**2 + dist_y_head**2; headbutt_cooldown_just_applied = False
     if dist_head_sq < (ball.radius + head_radius)**2:
@@ -977,11 +1477,171 @@ def handle_player_ball_collisions(player, ball, can_headbutt, body_collision_tim
              if collision_occurred: play_sound(loaded_sounds['body_hit'])
     return score_increase, new_can_headbutt, new_body_collision_timer, kick_pt
 
+# --- Welcome Screen ---
+def draw_welcome_screen(screen, font_large, font_medium, font_small):
+    # Fill the background
+    screen.fill(SKY_BLUE)
+    pygame.draw.rect(screen, GRASS_GREEN, (0, GROUND_Y, SCREEN_WIDTH, SCREEN_HEIGHT - GROUND_Y))
+    
+    # Draw title
+    title_text = "AWESOMEBALL!"
+    title_surf = font_large.render(title_text, True, YELLOW)
+    title_rect = title_surf.get_rect(centerx=SCREEN_WIDTH//2, centery=SCREEN_HEIGHT//4)
+    title_shadow = title_surf.get_rect(centerx=SCREEN_WIDTH//2+3, centery=SCREEN_HEIGHT//4+3)
+    
+    # Draw shadow first
+    title_shadow_surf = font_large.render(title_text, True, BLACK)
+    screen.blit(title_shadow_surf, title_shadow)
+    screen.blit(title_surf, title_rect)
+    
+    # Subtitle
+    subtitle = "The epic battle between brothers Nils and Harry!"
+    subtitle_surf = font_small.render(subtitle, True, BLACK)
+    subtitle_rect = subtitle_surf.get_rect(centerx=SCREEN_WIDTH//2, top=title_rect.bottom + 20)
+    screen.blit(subtitle_surf, subtitle_rect)
+    
+    # Game rules text
+    rules = [
+        "First to win 5 matches wins the game!",
+        "Each match is played to 5 points."
+    ]
+    
+    rules_y = subtitle_rect.bottom + 15
+    for rule in rules:
+        rule_surf = font_small.render(rule, True, BLACK)
+        rule_rect = rule_surf.get_rect(centerx=SCREEN_WIDTH//2, top=rules_y)
+        screen.blit(rule_surf, rule_rect)
+        rules_y += 25
+    
+    # Setup fonts for the different sections
+    small_font = pygame.font.Font(None, 24)
+    smaller_font = pygame.font.Font(None, 20)
+    
+    # Create a cool font for powerups
+    try:
+        # Try to load a system font that might look cool
+        cool_font = pygame.font.SysFont("impact", 28)
+    except:
+        # Fallback to default font
+        cool_font = pygame.font.Font(None, 28)
+    
+    # Left side - Player 1 controls
+    p1_controls = [
+        "Player 1 (Nils):",
+        "Move: A / D",
+        "Jump: W",
+        "Kick: S"
+    ]
+    
+    # Right side - Player 2 controls
+    p2_controls = [
+        "Player 2 (Harry):",
+        "Move: Left / Right Arrow",
+        "Jump: Up Arrow",
+        "Kick: Down Arrow"
+    ]
+    
+    # Position for player 1 controls (left side)
+    p1_x = SCREEN_WIDTH // 4
+    # Position for player 2 controls (right side)
+    p2_x = 3 * SCREEN_WIDTH // 4
+    controls_y = rules_y + 30
+    
+    # Create background boxes for controls
+    p1_controls_height = len(p1_controls) * 22
+    p1_controls_width = 200
+    p1_bg_rect = pygame.Rect(p1_x - p1_controls_width//2, controls_y, p1_controls_width, p1_controls_height)
+    p2_controls_width = 230
+    p2_bg_rect = pygame.Rect(p2_x - p2_controls_width//2, controls_y, p2_controls_width, p1_controls_height)
+    
+    # Draw background boxes
+    pygame.draw.rect(screen, (30, 30, 40, 180), p1_bg_rect, border_radius=8)
+    pygame.draw.rect(screen, (30, 30, 40, 180), p2_bg_rect, border_radius=8)
+    
+    for i, line in enumerate(p1_controls):
+        if i == 0:  # Header
+            text_surf = small_font.render(line, True, P1_COLOR_MAIN)
+        else:
+            text_surf = smaller_font.render(line, True, WHITE)
+        
+        text_rect = text_surf.get_rect(centerx=p1_x, top=controls_y)
+        screen.blit(text_surf, text_rect)
+        controls_y += 22
+    
+    # Position for player 2 controls (right side)
+    p2_x = 3 * SCREEN_WIDTH // 4
+    controls_y = rules_y + 30
+    
+    for i, line in enumerate(p2_controls):
+        if i == 0:  # Header
+            text_surf = small_font.render(line, True, P2_COLOR_MAIN)
+        else:
+            text_surf = smaller_font.render(line, True, WHITE)
+        
+        text_rect = text_surf.get_rect(centerx=p2_x, top=controls_y)
+        screen.blit(text_surf, text_rect)
+        controls_y += 22
+    
+    # Draw player models right below the control boxes
+    player_y = p1_bg_rect.bottom + 50  # Position players below control boxes
+    
+    # Player 1 (Nils)
+    player1_demo = StickMan(p1_x, player_y, facing=1, team_color=P1_COLOR_MAIN, team_accent=P1_COLOR_ACCENT)
+    player1_demo.update = lambda dt, other: None  # Disable update method
+    player1_demo.draw(screen)
+    
+    # Player 2 (Harry)
+    player2_demo = StickMan(p2_x, player_y, facing=-1, team_color=P2_COLOR_MAIN, team_accent=P2_COLOR_ACCENT)
+    player2_demo.update = lambda dt, other: None  # Disable update method
+    player2_demo.draw(screen)
+    
+    # Draw a ball - position it between the players
+    ball_x, ball_y = SCREEN_WIDTH//2, player_y - 30
+    
+    # Draw a soccer-like ball with pentagon pattern
+    # Main ball
+    pygame.draw.circle(screen, WHITE, (ball_x, ball_y), 25)
+    
+    # Draw black pentagons to make it look like a soccer ball
+    num_pentagons = 5
+    pentagon_radius = 8
+    for i in range(num_pentagons):
+        angle = i * (2 * math.pi / num_pentagons)
+        # Position pentagons around the ball surface
+        x = ball_x + int(15 * math.cos(angle))
+        y = ball_y + int(15 * math.sin(angle))
+        draw_pentagon(screen, BLACK, (x, y), pentagon_radius, angle)
+    
+    # Border
+    pygame.draw.circle(screen, BLACK, (ball_x, ball_y), 25, 1)
+    
+    # Start instruction directly under the ball
+    start_text = "Press R to Start Game"
+    start_surf = font_medium.render(start_text, True, RED)
+    start_rect = start_surf.get_rect(centerx=SCREEN_WIDTH//2, top=ball_y + 35)
+    screen.blit(start_surf, start_rect)
+    
+    # PowerUp section with cool font - positioned below the players
+    powerup_text = "Collect power-ups for special abilities!"
+    powerup_surf = cool_font.render(powerup_text, True, (255, 128, 0))  # Orange color
+    
+    # Create a cool background for the powerup text
+    powerup_rect = powerup_surf.get_rect(centerx=SCREEN_WIDTH//2, top=player_y + 80)
+    bg_rect = powerup_rect.inflate(20, 10)
+    bg_surf = pygame.Surface(bg_rect.size, pygame.SRCALPHA)
+    bg_surf.fill((0, 0, 100, 160))  # Semi-transparent blue
+    
+    # Draw the powerup section
+    screen.blit(bg_surf, bg_rect.topleft)
+    screen.blit(powerup_surf, powerup_rect)
+
 # --- Start First Game ---
 start_new_game()
 
 # --- Main Game Loop ---
 running = True
+showing_welcome_screen = True  # Start with welcome screen
+
 while running:
     dt = clock.tick(FPS) / 1000.0; dt = min(dt, 0.1)
 
@@ -994,12 +1654,51 @@ while running:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE: running = False
             if event.key == pygame.K_7: debug_mode = not debug_mode; print(f"Debug Mode {'ACT' if debug_mode else 'DEACT'}IVATED")
+            elif event.key == pygame.K_4:
+                # Randomize weather on key press 4
+                if match_active:
+                    # Choose a different weather than current
+                    old_weather = current_weather
+                    possible_weathers = [w for w in WEATHER_TYPES if w != old_weather]
+                    current_weather = random.choice(possible_weathers)
+                    
+                    # Clear and recreate weather particles
+                    weather_particles.clear()
+                    for _ in range(WEATHER_PARTICLE_COUNT.get(current_weather, 0)):
+                        weather_particles.append(WeatherParticle(current_weather, SCREEN_WIDTH, SCREEN_HEIGHT))
+                    
+                    # Reset wind change timer if it's windy
+                    if current_weather == "WINDY":
+                        weather_wind_change_timer = random.uniform(10.0, 20.0)
+                    
+                    print(f"Weather changed from {old_weather} to {current_weather}")
+                else:
+                    print("Weather can only be changed during an active match")
             elif event.key == pygame.K_6:
                 if match_active:
                     print("DEBUG: Forcing powerup spawn."); new_powerup = ParachutePowerup(); new_powerup.spawn(); active_powerups.append(new_powerup); powerup_spawn_timer = random.uniform(POWERUP_SPAWN_INTERVAL_MIN, POWERUP_SPAWN_INTERVAL_MAX)
                 else: print("DEBUG: Match inactive, cannot force spawn.")
-            elif game_over and event.key == pygame.K_r: start_new_game()
-            elif match_active:
+            elif event.key == pygame.K_5:
+                if match_active:
+                    print("DEBUG: Spawning SWORD powerup.")
+                    new_powerup = ParachutePowerup()
+                    # Override the normal random selection with SWORD
+                    new_powerup.active = True
+                    new_powerup.powerup_type = "SWORD"
+                    new_powerup.x = random.randint(GOAL_MARGIN_X + 50, SCREEN_WIDTH - GOAL_MARGIN_X - 50)
+                    new_powerup.y = -new_powerup.chute_radius * 2
+                    new_powerup.vx = random.uniform(-POWERUP_DRIFT_SPEED, POWERUP_DRIFT_SPEED)
+                    active_powerups.append(new_powerup)
+                    print(f"Powerup spawned: SWORD at ({new_powerup.x:.0f}, {new_powerup.y:.0f})")
+                else:
+                    print("DEBUG: Match inactive, cannot spawn SWORD.")
+            elif event.key == pygame.K_r: 
+                if showing_welcome_screen:
+                    showing_welcome_screen = False
+                    start_new_game()
+                elif game_over:
+                    start_new_game()
+            elif match_active and not showing_welcome_screen:
                 if not player1.is_tumbling:
                     if event.key == pygame.K_a: player1.move(-1)
                     elif event.key == pygame.K_d: player1.move(1)
@@ -1011,13 +1710,19 @@ while running:
                     elif event.key == pygame.K_UP: player2.jump()
                     elif event.key == pygame.K_DOWN: player2.start_kick()
         if event.type == pygame.KEYUP:
-             if match_active:
+             if match_active and not showing_welcome_screen:
                 if not player1.is_tumbling:
                     if event.key == pygame.K_a and player1.vx < 0: player1.stop_move()
                     elif event.key == pygame.K_d and player1.vx > 0: player1.stop_move()
                 if not player2.is_tumbling:
                     if event.key == pygame.K_LEFT and player2.vx < 0: player2.stop_move()
                     elif event.key == pygame.K_RIGHT and player2.vx > 0: player2.stop_move()
+
+    # Check if we should show welcome screen
+    if showing_welcome_screen:
+        draw_welcome_screen(screen, font_goal, font_large, font_medium)
+        pygame.display.flip()
+        continue
 
     # --- Handle Game Over State ---
     if game_over: # ... (unchanged) ...
@@ -1096,6 +1801,42 @@ while running:
         particles = [p for p in particles if p.update(dt)]
         active_rockets = [r for r in active_rockets if r.active and not r.update(dt, player_list, ball)]
         active_explosions = [e for e in active_explosions if e.update(dt)]
+        
+        # --- Weather Updates ---
+        # Update weather particles
+        for p in weather_particles:
+            p.update(dt)
+            
+        # Handle wind direction changes for WINDY weather
+        if current_weather == "WINDY":
+            # Remove global WEATHER_WIND_DIRECTION
+            weather_wind_change_timer -= dt
+            if weather_wind_change_timer <= 0:
+                # Flip the wind direction
+                WEATHER_WIND_DIRECTION = -WEATHER_WIND_DIRECTION
+                print(f"Wind direction changed to {'RIGHT' if WEATHER_WIND_DIRECTION > 0 else 'LEFT'}")
+                
+                # Create wind change particles/effects
+                wind_color = (200, 200, 255, 150)  # Light blue-ish with transparency
+                for _ in range(20):
+                    start_x = random.randint(0, SCREEN_WIDTH)
+                    start_y = random.randint(50, GROUND_Y - 50)
+                    particles.append(Particle(
+                        start_x, start_y, 
+                        colors=[wind_color], 
+                        speed_min=WEATHER_WIND_DIRECTION * 200, 
+                        speed_max=WEATHER_WIND_DIRECTION * 400, 
+                        size=3, 
+                        angle_override=math.pi if WEATHER_WIND_DIRECTION < 0 else 0
+                    ))
+                
+                # Reset timer for next change
+                weather_wind_change_timer = random.uniform(10.0, 20.0)
+                
+                # Recreate wind particles with new direction
+                for i, p in enumerate(weather_particles):
+                    if p.weather_type == "WINDY":
+                        weather_particles[i] = WeatherParticle("WINDY", SCREEN_WIDTH, SCREEN_HEIGHT)
 
         # --- Power-up Collection ---
         collected_powerups_indices = [] # ... (unchanged logic including BALL_FREEZE trigger) ...
@@ -1163,6 +1904,38 @@ while running:
             player1.vx += kick_push_vx * player2.facing_direction
             player1.vy -= 3 * kick_multiplier; player1.is_jumping = True
             play_sound(loaded_sounds['body_hit'])
+            
+        # --- SWORD-PLAYER COLLISIONS ---
+        # Check for player1's sword hitting player2
+        if player1.is_sword and player1.is_kicking and not player2.is_tumbling:
+            sword_data = player1.get_sword_position()
+            if sword_data:
+                tip_x, tip_y, base_x, base_y, angle = sword_data
+                # Check if sword line collides with player2's rect using clipline
+                if p2_rect.clipline(base_x, base_y, tip_x, tip_y):
+                    print("P1 sword hit P2!")
+                    player2.x += SWORD_PLAYER_HIT_FORCE * 0.01 * player1.facing_direction
+                    player2.vx += SWORD_PLAYER_HIT_FORCE * 0.1 * player1.facing_direction
+                    player2.vy -= SWORD_PLAYER_UPWARD_BOOST * 0.1
+                    player2.is_jumping = True
+                    player2.start_tumble()
+                    play_sound(loaded_sounds.get('sword_hit', loaded_sounds['wall_hit']))
+        
+        # Check for player2's sword hitting player1
+        if player2.is_sword and player2.is_kicking and not player1.is_tumbling:
+            sword_data = player2.get_sword_position()
+            if sword_data:
+                tip_x, tip_y, base_x, base_y, angle = sword_data
+                # Check if sword line collides with player1's rect using clipline
+                if p1_rect.clipline(base_x, base_y, tip_x, tip_y):
+                    print("P2 sword hit P1!")
+                    player1.x += SWORD_PLAYER_HIT_FORCE * 0.01 * player2.facing_direction
+                    player1.vx += SWORD_PLAYER_HIT_FORCE * 0.1 * player2.facing_direction
+                    player1.vy -= SWORD_PLAYER_UPWARD_BOOST * 0.1
+                    player1.is_jumping = True
+                    player1.start_tumble()
+                    play_sound(loaded_sounds.get('sword_hit', loaded_sounds['wall_hit']))
+                
         player1.x = max(player1.limb_width / 2, min(player1.x, SCREEN_WIDTH - player1.limb_width / 2))
         player2.x = max(player2.limb_width / 2, min(player2.x, SCREEN_WIDTH - player2.limb_width / 2))
 
@@ -1234,9 +2007,21 @@ while running:
 
 
     # --- Drawing ---
-    bg_color = SKY_BLUE
+    # Get weather background color
+    weather_effect = WEATHER_EFFECTS.get(current_weather, WEATHER_EFFECTS["SUNNY"])
+    bg_color = weather_effect.get("background_color", SKY_BLUE)
     if debug_mode: bg_color = DEBUG_BG_COLOR
     screen.fill(bg_color)
+
+    # Draw weather effects in the background
+    for p in weather_particles:
+        p.draw(screen)
+        
+    # Add fog overlay if foggy
+    if current_weather == "FOGGY":
+        fog_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        fog_surf.fill((255, 255, 255, 70))  # Semi-transparent white
+        screen.blit(fog_surf, (0, 0))
 
     pygame.draw.rect(screen, GRASS_GREEN, (0, GROUND_Y, SCREEN_WIDTH, SCREEN_HEIGHT - GROUND_Y))
     # Draw Goals using effective height/y based on timers
@@ -1279,6 +2064,53 @@ while running:
     # --- Draw UI ---
     draw_scoreboard(screen, player1_score, player2_score, p1_games_won, p2_games_won, font_large, font_medium, font_small, goal_message_timer > 0 or match_over_timer > 0)
     draw_game_scores(screen, game_scores, font_small)
+    
+    # Draw weather info
+    weather_font = font_small
+    weather_label = f"Weather: {current_weather.capitalize()}"
+    weather_effect = WEATHER_EFFECTS.get(current_weather, WEATHER_EFFECTS["SUNNY"])
+    effects_text = []
+    
+    if "ball_friction" in weather_effect and weather_effect["ball_friction"] != 1.0:
+        if weather_effect["ball_friction"] < 1.0:
+            effects_text.append("Slippery")
+        else:
+            effects_text.append("Sticky")
+            
+    if "gravity" in weather_effect and weather_effect["gravity"] != 1.0:
+        if weather_effect["gravity"] < 1.0:
+            effects_text.append("Low gravity")
+        else:
+            effects_text.append("High gravity")
+            
+    if current_weather == "WINDY":
+        direction = "→" if WEATHER_WIND_DIRECTION > 0 else "←"
+        effects_text.append(f"Wind {direction}")
+        
+    if current_weather == "FOGGY":
+        effects_text.append("Low visibility")
+    
+    effects_str = ", ".join(effects_text)
+    weather_text = f"{weather_label} ({effects_str})"
+    
+    weather_color = {
+        "SUNNY": (255, 200, 0),
+        "RAINY": (100, 140, 255),
+        "WINDY": (200, 200, 200),
+        "SNOWY": (220, 240, 255),
+        "FOGGY": (180, 180, 180)
+    }.get(current_weather, WHITE)
+    
+    weather_surf = weather_font.render(weather_text, True, weather_color)
+    weather_rect = weather_surf.get_rect(top=10, right=SCREEN_WIDTH - 10)
+    
+    # Add background to make text readable
+    weather_bg = weather_rect.inflate(10, 6)
+    weather_bg_surf = pygame.Surface(weather_bg.size, pygame.SRCALPHA)
+    weather_bg_surf.fill((0, 0, 0, 150))
+    screen.blit(weather_bg_surf, weather_bg.topleft)
+    screen.blit(weather_surf, weather_rect)
+    
     if goal_message_timer > 0 and match_active:
         goal_text_surf = font_goal.render("GOAL!", True, ITALY_RED); goal_text_rect = goal_text_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3)); bg_rect = goal_text_rect.inflate(20, 10); bg_surf = pygame.Surface(bg_rect.size, pygame.SRCALPHA); bg_surf.fill((WHITE[0], WHITE[1], WHITE[2], 180)); screen.blit(bg_surf, bg_rect.topleft); screen.blit(goal_text_surf, goal_text_rect)
     if match_over_timer > 0 and not game_over:
@@ -1342,9 +2174,9 @@ while running:
         if ball.is_frozen:
             freeze_text = "BALL FROZEN: {:.1f}".format(ball_freeze_timer); freeze_surf = powerup_font.render(freeze_text, True, (180, 220, 255)); freeze_rect = freeze_surf.get_rect(midbottom=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 10)); screen.blit(freeze_surf, freeze_rect)
 
-
-    if debug_mode:
-        timestamp_surf = font_timestamp.render(GENERATION_TIMESTAMP, True, TEXT_COLOR); timestamp_rect = timestamp_surf.get_rect(bottomright=(SCREEN_WIDTH - 10, SCREEN_HEIGHT - 10)); screen.blit(timestamp_surf, timestamp_rect)
+        # Debug info
+        if debug_mode:
+            pass  # Add any additional debug info here
 
     pygame.display.flip()
 

@@ -85,11 +85,11 @@ DEBUG_MATCH_POINT_LIMIT = 1
 # --- Weather Effect Constants ---
 WEATHER_TYPES = ["SUNNY", "RAINY", "WINDY", "SNOWY", "FOGGY"]
 WEATHER_EFFECTS = {
-    "SUNNY": {"ball_friction": 1.0, "gravity": 1.0, "background_color": (135, 206, 235)},  # Normal conditions
-    "RAINY": {"ball_friction": 0.85, "gravity": 1.05, "background_color": (100, 149, 180)},  # Slippery conditions
-    "WINDY": {"ball_friction": 0.95, "wind_force": 15.0, "background_color": (175, 196, 215)},  # Wind pushes objects
-    "SNOWY": {"ball_friction": 0.7, "gravity": 0.9, "background_color": (220, 230, 240)},  # Very slippery, lower gravity
-    "FOGGY": {"ball_friction": 0.98, "gravity": 1.0, "background_color": (200, 200, 200)}  # Reduced visibility
+    "SUNNY": {"gravity": 1.0, "background_color": (135, 206, 235)},  # Normal conditions
+    "RAINY": {"gravity": 1.05, "background_color": (100, 149, 180)},  # Wet conditions
+    "WINDY": {"wind_force": 15.0, "background_color": (175, 196, 215)},  # Wind pushes objects
+    "SNOWY": {"gravity": 0.9, "background_color": (220, 230, 240)},  # Lower gravity
+    "FOGGY": {"gravity": 1.0, "background_color": (200, 200, 200)}  # Reduced visibility
 }
 WEATHER_PARTICLE_COUNT = {
     "SUNNY": 5,
@@ -1142,9 +1142,6 @@ class Ball:
         # Apply gravity based on weather
         current_gravity = GRAVITY * weather_effect.get("gravity", 1.0)
         
-        # Apply friction based on weather
-        current_ball_friction = BALL_FRICTION * weather_effect.get("ball_friction", 1.0)
-        
         # Apply wind force if in windy weather
         if current_weather == "WINDY":
             wind_force = weather_effect.get("wind_force", 0.0)
@@ -1154,7 +1151,7 @@ class Ball:
         self.rotation_angle += self.vx * 0.015
         self.rotation_angle %= (2 * math.pi)
         self.vy += current_gravity
-        self.vx *= current_ball_friction
+        self.vx *= BALL_FRICTION
         self.x += self.vx
         self.y += self.vy
         
@@ -1298,8 +1295,8 @@ font_large = pygame.font.Font(None, 50); font_medium = pygame.font.Font(None, 36
 font_timestamp = pygame.font.Font(None, 20); font_goal = pygame.font.Font(None, 80)
 winner_images = {}
 try:
-    winner_images[1] = pygame.image.load("nils_wins.png").convert_alpha()
-    winner_images[2] = pygame.image.load("harry_wins.png").convert_alpha()
+    winner_images[1] = pygame.image.load("images/nils_wins.png").convert_alpha()
+    winner_images[2] = pygame.image.load("images/harry_wins.png").convert_alpha()
     print("Loaded winner images.")
 except pygame.error as e:
     print(f"Warning: Could not load winner images: {e}")
@@ -2071,12 +2068,6 @@ while running:
     weather_effect = WEATHER_EFFECTS.get(current_weather, WEATHER_EFFECTS["SUNNY"])
     effects_text = []
     
-    if "ball_friction" in weather_effect and weather_effect["ball_friction"] != 1.0:
-        if weather_effect["ball_friction"] < 1.0:
-            effects_text.append("Slippery")
-        else:
-            effects_text.append("Sticky")
-            
     if "gravity" in weather_effect and weather_effect["gravity"] != 1.0:
         if weather_effect["gravity"] < 1.0:
             effects_text.append("Low gravity")

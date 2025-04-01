@@ -31,6 +31,7 @@ SCREEN_FLASH_COLOR = (255, 255, 255, 100)
 SCREEN_FLASH_DURATION = 0.15
 DEBUG_KICK_ANGLES = False
 
+
 # Physics
 GRAVITY = 0.5; BASE_PLAYER_SPEED = 4; BASE_JUMP_POWER = -11
 BASE_KICK_FORCE_X = 15; BASE_KICK_FORCE_Y = -2
@@ -835,6 +836,10 @@ class StickMan: # Updated powerup dict/handling
 
         # --- Animation & State Attributes ---
         self.l_upper_arm_angle = 0; self.r_upper_arm_angle = 0; self.l_forearm_angle = 0; self.r_forearm_angle = 0; self.l_thigh_angle = 0; self.r_thigh_angle = 0; self.l_shin_angle = 0; self.r_shin_angle = 0; self.head_pos = (0, 0); self.neck_pos = (0, 0); self.hip_pos = (0, 0); self.shoulder_pos = (0, 0); self.l_elbow_pos = (0, 0); self.r_elbow_pos = (0, 0); self.l_hand_pos = (0, 0); self.r_hand_pos = (0, 0); self.l_knee_pos = (0, 0); self.r_knee_pos = (0, 0); self.l_foot_pos = (0, 0); self.r_foot_pos = (0, 0); self.body_rect = pygame.Rect(0,0,0,0); self.facing_direction = facing; self.on_other_player_head = False
+        
+        # --- Crossbar Standing Variables ---
+        self.on_left_crossbar = False
+        self.on_right_crossbar = False
 
         # --- Wing Attributes (if applicable) ---
         self.wing_color = (173, 216, 230); self.wing_outline_color = (50, 50, 100); self.wing_rest_angle_offset = math.pi * 0.1 + (math.pi / 6); self.l_wing_base_angle = math.pi + self.wing_rest_angle_offset; self.r_wing_base_angle = -self.wing_rest_angle_offset; self.l_wing_upper_angle = self.l_wing_base_angle - 0.4; self.l_wing_lower_angle = self.l_wing_base_angle + 0.6; self.r_wing_upper_angle = self.r_wing_base_angle + 0.4; self.r_wing_lower_angle = self.r_wing_base_angle - 0.6; self.wing_flap_timer = 0.0; self.wing_flap_duration = 0.2; self.wing_flapping = False; self.wing_flap_magnitude = math.pi * 0.4; self.wing_upper_lobe_size = (30, 22); self.wing_lower_lobe_size = (28, 25)
@@ -940,11 +945,18 @@ class StickMan: # Updated powerup dict/handling
         if "FLIGHT" in self.active_powerups:
             if not self.is_kicking: can_jump_now = True
         else:
-            if (not self.is_jumping or self.on_other_player_head) and not self.is_kicking: can_jump_now = True
+            # Tillåt hopp om man inte redan hoppar, står på en annan spelare, ELLER står på en av ribborna
+            if (not self.is_jumping or self.on_other_player_head or self.on_left_crossbar or self.on_right_crossbar) and not self.is_kicking:
+                can_jump_now = True
         if can_jump_now:
-            was_on_head = self.on_other_player_head; play_sound(loaded_sounds['jump']);
+            was_on_head = self.on_other_player_head
+            was_on_crossbar = self.on_left_crossbar or self.on_right_crossbar # Kolla om vi var på ribban
+            play_sound(loaded_sounds['jump']);
             if was_on_head: play_sound(loaded_sounds['combo'])
+            if was_on_crossbar: play_sound(loaded_sounds['ball_bounce']) # Lägg till ett litet studsljud?
             self.is_jumping = True; self.on_other_player_head = False
+            self.on_left_crossbar = False # Nollställ ribb-status vid hopp
+            self.on_right_crossbar = False
             self.vy = self.jump_power; self.walk_cycle_timer = 0
             if "FLIGHT" in self.active_powerups: self.start_wing_flap()
     def start_kick(self):
@@ -1024,30 +1036,154 @@ class StickMan: # Updated powerup dict/handling
              self.vx += (wind_force * math.cos(wind_angle) * 0.02 * dt) # Increased multiplier from 0.01
              self.vy += (wind_force * math.sin(wind_angle) * 0.01 * dt) # Increased multiplier from 0.005
             
-        was_airborne = self.is_jumping or (not self.on_other_player_head and self.y < self.base_y); time_ms = pygame.time.get_ticks()
-        was_on_head = self.on_other_player_head; landed_on_head_this_frame = False; landed_on_ground_this_frame = False
-        platform_y = self.base_y; other_head_pos, other_head_radius = other_player.get_head_position_radius()
-        head_top_y = other_head_pos[1] - other_head_radius; dist_x_head = self.x - other_head_pos[0]
+        was_airborne = self.is_jumping or (not self.on_other_player_head and not self.on_left_crossbar and not self.on_right_crossbar and self.y < self.base_y)
+        was_on_head = self.on_other_player_head
+        was_on_left_crossbar = self.on_left_crossbar
+        was_on_right_crossbar = self.on_right_crossbar
+        landed_on_head_this_frame = False
+        landed_on_ground_this_frame = False
+        landed_on_crossbar_this_frame = False
+
+        # Plattformsdetektering - marken, huvud eller tvärstång
+        platform_y = self.base_y  # Standard plattform är marken
+        
+        # Få måttuppgifter för crossbars (använd samma som för bollkollisioner)
+        # Vänster mål
+        left_goal_width = abs(GOAL_DEPTH_X) * 2.0
+        left_crossbar_y = GOAL_Y_POS
+        left_crossbar_height = 8  # Samma som i draw_goal_isometric
+        left_crossbar_x = GOAL_LINE_X_LEFT
+        
+        # Höger mål
+        right_goal_width = abs(GOAL_DEPTH_X) * 2.0
+        right_crossbar_y = GOAL_Y_POS
+        right_crossbar_height = 8  # Samma som i draw_goal_isometric
+        right_crossbar_x = GOAL_LINE_X_RIGHT
+        
+        # Crossbar tops
+        left_crossbar_top = left_crossbar_y - left_crossbar_height/2
+        right_crossbar_top = right_crossbar_y - right_crossbar_height/2
+        
+        # Kolla om spelaren är inom räckhåll för vänster tvärstång
+        is_aligned_for_left_crossbar = (self.x + self.limb_width/2 >= left_crossbar_x - left_goal_width/2 and 
+                                       self.x - self.limb_width/2 <= left_crossbar_x + left_goal_width/2)
+        
+        # Kolla om spelaren är inom räckhåll för höger tvärstång
+        is_aligned_for_right_crossbar = (self.x + self.limb_width/2 >= right_crossbar_x - right_goal_width/2 and 
+                                        self.x - self.limb_width/2 <= right_crossbar_x + right_goal_width/2)
+        
+        # Hämta andra spelarens huvud för plattformsdetektering
+        other_head_pos, other_head_radius = other_player.get_head_position_radius()
+        head_top_y = other_head_pos[1] - other_head_radius
+        dist_x_head = self.x - other_head_pos[0]
         is_aligned_for_head = abs(dist_x_head) < (other_head_radius + self.head_radius + HEAD_PLATFORM_RADIUS_BUFFER)
-        if not was_on_head: self.vy += current_gravity
-        elif was_on_head and not is_aligned_for_head: self.on_other_player_head = False; self.is_jumping = True; self.vy += current_gravity
-        elif was_on_head and is_aligned_for_head: self.y = head_top_y; self.vy = 0
+        
+        # Uppdatera position baserat på fysik
+        if not was_on_head and not was_on_left_crossbar and not was_on_right_crossbar:
+            self.vy += GRAVITY
+        elif was_on_head and not is_aligned_for_head:
+            self.on_other_player_head = False
+            self.is_jumping = True
+            self.vy += GRAVITY
+        elif was_on_head and is_aligned_for_head:
+            self.y = head_top_y
+            self.vy = 0
+        elif was_on_left_crossbar and not is_aligned_for_left_crossbar:
+            self.on_left_crossbar = False
+            self.is_jumping = True
+            self.vy += GRAVITY
+        elif was_on_left_crossbar and is_aligned_for_left_crossbar:
+            self.y = left_crossbar_top
+            self.vy = 0
+        elif was_on_right_crossbar and not is_aligned_for_right_crossbar:
+            self.on_right_crossbar = False
+            self.is_jumping = True
+            self.vy += GRAVITY
+        elif was_on_right_crossbar and is_aligned_for_right_crossbar:
+            self.y = right_crossbar_top
+            self.vy = 0
+            
         next_y = self.y + self.vy
+        
+        # Landningskontroller
         if self.vy >= 0:
+            # Kontrollera landning på huvud först
             can_land_on_head_now = (is_aligned_for_head and next_y >= head_top_y and self.y < head_top_y + 5)
+            
+            # Kontrollera landning på vänster tvärstång
+            can_land_on_left_crossbar = (is_aligned_for_left_crossbar and 
+                                        next_y >= left_crossbar_top and 
+                                        self.y < left_crossbar_top + 5)
+            
+            # Kontrollera landning på höger tvärstång
+            can_land_on_right_crossbar = (is_aligned_for_right_crossbar and 
+                                         next_y >= right_crossbar_top and 
+                                         self.y < right_crossbar_top + 5)
+            
+            # Landning på huvud
             if can_land_on_head_now:
-                self.y = head_top_y; self.vy = 0; self.is_jumping = False; self.on_other_player_head = True; landed_on_head_this_frame = True
-                if self.is_tumbling: self.vy *= -0.3
-            elif not landed_on_head_this_frame and next_y >= self.base_y:
-                self.y = self.base_y; self.vy = 0; self.is_jumping = False; self.on_other_player_head = False; landed_on_ground_this_frame = True
-                if self.is_tumbling: self.rotation_velocity *= 0.8; self.vx *= 0.8
-            else: self.y = next_y;
-            if self.y < self.base_y and not landed_on_head_this_frame: self.on_other_player_head = False
-        else: self.y = next_y; self.on_other_player_head = False
-        if self.y > self.base_y and not self.on_other_player_head: self.y = self.base_y;
-        if self.vy > 0 and self.y == self.base_y: self.vy = 0; self.is_jumping = False;
-        is_now_grounded = landed_on_ground_this_frame or landed_on_head_this_frame
-        if was_airborne and is_now_grounded and not self.is_tumbling: play_sound(loaded_sounds['land'])
+                self.y = head_top_y
+                self.vy = 0
+                self.is_jumping = False
+                self.on_other_player_head = True
+                self.on_left_crossbar = False
+                self.on_right_crossbar = False
+                landed_on_head_this_frame = True
+            # Landning på vänster tvärstång
+            elif can_land_on_left_crossbar:
+                self.y = left_crossbar_top
+                self.vy = 0
+                self.is_jumping = False
+                self.on_other_player_head = False
+                self.on_left_crossbar = True
+                self.on_right_crossbar = False
+                landed_on_crossbar_this_frame = True
+            # Landning på höger tvärstång
+            elif can_land_on_right_crossbar:
+                self.y = right_crossbar_top
+                self.vy = 0
+                self.is_jumping = False
+                self.on_other_player_head = False
+                self.on_left_crossbar = False
+                self.on_right_crossbar = True
+                landed_on_crossbar_this_frame = True
+            # Landning på marken
+            elif not landed_on_head_this_frame and not landed_on_crossbar_this_frame and next_y >= self.base_y:
+                self.y = self.base_y
+                self.vy = 0
+                self.is_jumping = False
+                self.on_other_player_head = False
+                self.on_left_crossbar = False
+                self.on_right_crossbar = False
+                landed_on_ground_this_frame = True
+            else:
+                # Fortstätt falla
+                self.y = next_y
+                if self.y < self.base_y and not landed_on_head_this_frame and not landed_on_crossbar_this_frame:
+                    self.on_other_player_head = False
+                    self.on_left_crossbar = False
+                    self.on_right_crossbar = False
+        else:
+            # Åker uppåt
+            self.y = next_y
+            self.on_other_player_head = False
+            self.on_left_crossbar = False
+            self.on_right_crossbar = False
+        
+        # Sanitetskontroll - se till att spelaren inte faller utanför spelplanens botten
+        if self.y > self.base_y and not self.on_other_player_head and not self.on_left_crossbar and not self.on_right_crossbar:
+            self.y = self.base_y
+            
+        # Stoppa vertikal rörelse om vi är på marken
+        if self.vy > 0 and self.y == self.base_y:
+            self.vy = 0
+            self.is_jumping = False
+            
+        # Spela landningsljud om vi landat på en plattform (mark eller huvud eller tvärstång)
+        is_now_grounded = landed_on_ground_this_frame or landed_on_head_this_frame or landed_on_crossbar_this_frame
+        if was_airborne and is_now_grounded and not self.is_tumbling:
+            play_sound(loaded_sounds['land'])
+            
         intended_vx = self.vx
         if not self.is_kicking:
             effective_vx = intended_vx
@@ -2198,7 +2334,7 @@ while running:
                 harry_eats_image = winner_images["harry_eats"]
                 eats_rect = harry_eats_image.get_rect()
                 eats_center_y = SCREEN_HEIGHT // 2 + 180 - 40 - 100 // 2
-                eats_rect.center = (trophy_center_x - 300, eats_center_y)  # 300 pixels to the left of trophy
+                eats_rect.center = (trophy_center_x - 280, eats_center_y)  # 280 pixels to the left of trophy (was 300)
                 screen.blit(harry_eats_image, eats_rect)
                 
             # Then, draw harry_wins.png on the right

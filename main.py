@@ -161,7 +161,8 @@ GOAL_MESSAGE_DURATION = 1.5
 # --- Power-up Constants ---
 POWERUP_TYPES = ["FLIGHT", "ROCKET_LAUNCHER", "BIG_PLAYER", "SUPER_JUMP",
                  "BALL_FREEZE", "SPEED_BOOST", "GOAL_SHIELD", "SHRINK_OPPONENT",
-                 "LOW_GRAVITY", "REVERSE_CONTROLS", "ENORMOUS_HEAD", "GOAL_ENLARGER", "SWORD"] # <<< Removed old, added new
+                 "LOW_GRAVITY", "REVERSE_CONTROLS",
+                 "GOAL_ENLARGER", "SWORD"] # <<< Removed old, added new
 POWERUP_SPAWN_INTERVAL_MIN = 15.0
 POWERUP_SPAWN_INTERVAL_MAX = 30.0
 POWERUP_DESCEND_SPEED = 100
@@ -562,26 +563,54 @@ class Rocket: # Removed reflect shield check
                 spread_angle = self.angle + math.pi + random.uniform(-0.5, 0.5); particles.append(Particle(smoke_x, smoke_y, p_type='smoke', angle_override=spread_angle))
             self.smoke_timer = 1 / (FPS * (SMOKE_EMISSION_RATE/10.0))
         exploded = False
+        explosion_center_x, explosion_center_y = self.x, self.y # Default center
+        hit_player = None # Track which player was hit
+        
         if self.x < -self.width or self.x > SCREEN_WIDTH + self.width or self.y < -self.height or self.y > SCREEN_HEIGHT + self.height:
             self.active = False; return False
         if self.y + self.height / 2 > GROUND_Y:
             self.y = GROUND_Y - self.height / 2; exploded = True
+            explosion_center_x, explosion_center_y = self.x, self.y # Ground hit uses rocket pos
+            
         rocket_rect = self.get_rect(); rocket_center_x, rocket_center_y = self.x, self.y
-        for p in players:
-            if p == self.owner: continue
-            # Removed Reflect Shield Check
-            if p.get_body_rect().colliderect(rocket_rect): exploded = True; break
-            if not exploded:
-                head_pos, head_radius = p.get_head_position_radius()
-                dist_sq_head = (rocket_center_x - head_pos[0])**2 + (rocket_center_y - head_pos[1])**2
-                if dist_sq_head < (head_radius + max(self.width, self.height) / 2)**2: exploded = True; break
-        if not exploded:
+        if not exploded: # Only check players if not already exploded (e.g. by ground)
+            for p in players:
+                if p == self.owner: continue
+                # Removed Reflect Shield Check
+                if p.get_body_rect().colliderect(rocket_rect):
+                    hit_player = p # Store hit player
+                    exploded = True; break
+                if not exploded: # Check head only if body wasn't hit
+                    head_pos, head_radius = p.get_head_position_radius()
+                    dist_sq_head = (rocket_center_x - head_pos[0])**2 + (rocket_center_y - head_pos[1])**2
+                    if dist_sq_head < (head_radius + max(self.width, self.height) / 2)**2:
+                        hit_player = p # Store hit player
+                        exploded = True; break
+            
+        if not exploded: # Check ball only if no player/ground hit
             ball_rect = pygame.Rect(ball.x - ball.radius, ball.y - ball.radius, ball.radius * 2, ball.radius * 2)
-            if ball_rect.colliderect(rocket_rect): exploded = True
+            if ball_rect.colliderect(rocket_rect):
+                 exploded = True
+                 explosion_center_x, explosion_center_y = self.x, self.y # Ball hit uses rocket pos
+                 
         if exploded:
-            self.active = False; create_explosion(self.x, self.y, ball.radius * ROCKET_BLAST_RADIUS_FACTOR, players, ball)
-            return True
-        return False
+            self.active = False
+            # Determine the center for force/stun application
+            force_center_x, force_center_y = self.x, self.y # Default to rocket pos
+            if hit_player:
+                force_center_x, force_center_y = hit_player.x, hit_player.y
+                print(f"Rocket hit Player {1 if hit_player.facing_direction==1 else 2}, centering physics at ({force_center_x:.0f}, {force_center_y:.0f})")
+            
+            # Apply physics (force/stun) centered correctly
+            create_explosion(force_center_x, force_center_y, ball.radius * ROCKET_BLAST_RADIUS_FACTOR, players, ball)
+            
+            # Create the VISUAL explosion centered at the rocket's impact point
+            visual_explosion_x, visual_explosion_y = self.last_pos # Use last position before update for visual
+            active_explosions.append(Explosion(visual_explosion_x, visual_explosion_y, ball.radius * ROCKET_BLAST_RADIUS_FACTOR))
+            print(f"Creating visual explosion at ({visual_explosion_x:.0f}, {visual_explosion_y:.0f})")
+            
+            return True # Indicate explosion happened (for rocket removal)
+        return False # Rocket still active
     def get_rect(self):
         return pygame.Rect(self.x - max(self.width, self.height)/2, self.y - max(self.width, self.height)/2, max(self.width, self.height), max(self.width, self.height))
     def draw(self, screen):
@@ -613,25 +642,41 @@ def create_explosion(x, y, radius, players, ball): # Added minimum bump
     MIN_ROCKET_BUMP_SPEED = 2.0 # Minimum speed away from blast
 
     for p in players:
-        dist_sq = (p.x - x)**2 + (p.y - y)**2
-        if dist_sq < radius**2 and dist_sq > 0:
-            dist = math.sqrt(dist_sq); force_magnitude = ROCKET_EXPLOSION_FORCE * (1.0 - (dist / radius))
-            push_vec_x = (p.x - x) / dist; push_vec_y = (p.y - y) / dist
-            explode_vx = push_vec_x * force_magnitude
-            explode_vy = push_vec_y * force_magnitude * 0.8 - ROCKET_PLAYER_UPWARD_BOOST
-            bump_vx = push_vec_x * MIN_ROCKET_BUMP_SPEED
-            bump_vy = push_vec_y * MIN_ROCKET_BUMP_SPEED * 0.5
-            p.vx += explode_vx + bump_vx # <<< Combine forces
-            p.vy += explode_vy + bump_vy # <<< Combine forces
+        dist_sq = (p.x - x)**2 + (p.y - y)**2 # Calculate distance from player to force center (x, y)
+        # Check if player is within radius of force center, INCLUDING the center itself
+        if dist_sq < radius**2:
+            # Apply force only if distance is > 0 (avoid division by zero later)
+            if dist_sq > 0:
+                dist = math.sqrt(dist_sq); force_magnitude = ROCKET_EXPLOSION_FORCE * (1.0 - (dist / radius))
+                push_vec_x = (p.x - x) / dist; push_vec_y = (p.y - y) / dist # Direction from force center TO player
+                explode_vx = push_vec_x * force_magnitude
+                explode_vy = push_vec_y * force_magnitude * 0.8 - ROCKET_PLAYER_UPWARD_BOOST
+                bump_vx = push_vec_x * MIN_ROCKET_BUMP_SPEED
+                bump_vy = push_vec_y * MIN_ROCKET_BUMP_SPEED * 0.5
+                p.vx += explode_vx + bump_vx # Apply force
+                p.vy += explode_vy + bump_vy # Apply force
+            else: # Player is exactly at the center - apply some upward/random bump?
+                p.vx += random.uniform(-MIN_ROCKET_BUMP_SPEED, MIN_ROCKET_BUMP_SPEED)
+                p.vy -= ROCKET_PLAYER_UPWARD_BOOST * 0.5 # Apply reduced upward boost
+
             p.is_jumping = True
             p.on_other_player_head = False
             p.start_tumble()
+            
+            # --- Apply Stun --- 
+            stun_duration = 5.0
+            p.stun_timer += stun_duration
+            p.is_stunned = True
+            print(f"Player {1 if p.facing_direction==1 else 2} hit by explosion! Stun timer: {p.stun_timer:.1f}s")
+            # Play a stun sound?
+            # play_sound(loaded_sounds['stun_effect']) # Needs sound
+
     dist_sq = (ball.x - x)**2 + (ball.y - y)**2
     if dist_sq < radius**2 and dist_sq > 0:
         dist = math.sqrt(dist_sq); force_magnitude = ROCKET_EXPLOSION_FORCE * (1.0 - (dist / radius))
         push_vec_x = (ball.x - x) / dist; push_vec_y = (ball.y - y) / dist
         ball.apply_force(push_vec_x * force_magnitude, push_vec_y * force_magnitude - ROCKET_BALL_UPWARD_BOOST, hitter='explosion')
-    active_explosions.append(Explosion(x, y, radius))
+    # active_explosions.append(Explosion(x, y, radius)) # <<< REMOVED: Visual explosion handled separately
 
 class WeatherParticle:
     def __init__(self, weather_type, screen_width, screen_height):
@@ -855,6 +900,10 @@ class StickMan: # Updated powerup dict/handling
         self.head_pulse_timer = 0.0 # For enormous head pulse
         self.gun_anim_timer = random.uniform(0, 2 * math.pi); self.gun_angle_offset = 0.0; self.gun_tip_pos = (0, 0)
         self.is_tumbling = False; self.tumble_timer = 0.0; self.rotation_angle = 0.0; self.rotation_velocity = 0.0
+        
+        # --- Stun Variables ---
+        self.stun_timer = 0.0
+        self.is_stunned = False
     def start_tumble(self):
         if not self.is_tumbling:
              self.is_tumbling = True; self.tumble_timer = TUMBLE_DURATION
@@ -931,7 +980,7 @@ class StickMan: # Updated powerup dict/handling
         self.current_nose_length = self.base_nose_length * head_scale
         self.current_nose_width = self.base_nose_width * head_scale
     def move(self, direction):
-        if self.is_tumbling: return
+        if self.is_tumbling or self.is_stunned: return # <<< Added stun check
         move_direction = direction
         if self.is_controls_reversed: move_direction *= -1
         if not self.is_kicking: self.vx = move_direction * self.player_speed
@@ -940,7 +989,7 @@ class StickMan: # Updated powerup dict/handling
         if self.is_tumbling: return
         self.vx = 0
     def jump(self):
-        if self.is_tumbling: return
+        if self.is_tumbling or self.is_stunned: return # <<< Added stun check
         can_jump_now = False
         if "FLIGHT" in self.active_powerups:
             if not self.is_kicking: can_jump_now = True
@@ -960,7 +1009,7 @@ class StickMan: # Updated powerup dict/handling
             self.vy = self.jump_power; self.walk_cycle_timer = 0
             if "FLIGHT" in self.active_powerups: self.start_wing_flap()
     def start_kick(self):
-        if self.is_tumbling: return
+        if self.is_tumbling or self.is_stunned: return # <<< Added stun check
         if not self.is_kicking:
             if "ROCKET_LAUNCHER" in self.active_powerups: 
                 self.fire_rocket()
@@ -1021,6 +1070,20 @@ class StickMan: # Updated powerup dict/handling
         if self.is_enormous_head: # Update pulse timer and recalculate sizes
              self.head_pulse_timer += dt * 5.0
              self.calculate_current_sizes()
+
+        # --- Update Stun Timer ---
+        if self.stun_timer > 0:
+            self.stun_timer -= dt
+            if self.stun_timer <= 0:
+                self.stun_timer = 0.0
+                self.is_stunned = False
+                print(f"Player {1 if self.facing_direction==1 else 2} is no longer stunned.")
+            else:
+                self.is_stunned = True
+                # Stop any current movement if stunned
+                self.vx = 0
+        else:
+            self.is_stunned = False
 
         current_gravity = GRAVITY * POWERUP_LOW_GRAVITY_FACTOR if "LOW_GRAVITY" in self.active_powerups else GRAVITY
         weather_effect = WEATHER_EFFECTS.get(current_weather, WEATHER_EFFECTS["SUNNY"])
@@ -1368,6 +1431,20 @@ class StickMan: # Updated powerup dict/handling
             q_font = pygame.font.Font(None, int(24 * (self.head_radius / self.base_head_radius)))
             q_surf = q_font.render("?", True, RED)
             q_rect = q_surf.get_rect(centerx=int(self.head_pos[0]), bottom=int(self.head_pos[1] - self.head_radius - 5)); screen.blit(q_surf, q_rect)
+
+        # --- Draw Stun Indicator ---
+        if self.is_stunned:
+            stun_font = pygame.font.Font(None, int(30 * (self.head_radius / self.base_head_radius))) # Scale font size
+            stun_text = "Zzz"
+            stun_color = (60, 60, 150) # Dark blue
+            
+            # Animate the text slightly
+            offset_y = math.sin(pygame.time.get_ticks() * 0.01) * 3 # Bob up and down
+            
+            stun_surf = stun_font.render(stun_text, True, stun_color)
+            stun_rect = stun_surf.get_rect(centerx=int(self.head_pos[0]), 
+                                           bottom=int(self.head_pos[1] - self.head_radius - 10 + offset_y))
+            screen.blit(stun_surf, stun_rect)
 
         # --- Draw Sword --- # Added
         if self.is_sword:

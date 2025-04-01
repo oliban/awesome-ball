@@ -474,7 +474,6 @@ def draw_moon(surface, position, size, color):
     pygame.draw.circle(surface, dark_color, (position[0] + offset_x, position[1] + offset_y), size)
 
 # --- SWORD Powerup Constants --- (Moved here)
-POWERUP_SWORD_DURATION = 30.0  # Increased from 15.0 to 30.0
 SWORD_COLOR = (192, 192, 192) # Silver
 SWORD_HILT_COLOR = (139, 69, 19) # Brown
 SWORD_LENGTH_FACTOR = 1.8 # Relative to torso length
@@ -541,7 +540,7 @@ class ParachutePowerup: # ... (no change) ...
         if not self.active: return
         
         # Debug print for box color
-        print(f"Drawing powerup {self.id} type {self.powerup_type} with color: {self.box_color}")
+        # print(f"Drawing powerup {self.id} type {self.powerup_type} with color: {self.box_color}") # REMOVED THIS LINE
         
         box_rect = self.get_box_rect(); pygame.draw.rect(screen, self.box_color, box_rect); pygame.draw.rect(screen, BLACK, box_rect, 1) # Use self.box_color
         
@@ -1088,7 +1087,9 @@ class StickMan: # Updated powerup dict/handling
                     elif p_type == "REVERSE_CONTROLS": self.is_controls_reversed = False; print("Controls Restored")
                     elif p_type == "REFLECT_SHIELD": print("Reflect Shield ended")
                     elif p_type == "ENORMOUS_HEAD": self.is_enormous_head = False; self.calculate_current_sizes(); print("Enormous Head ended")
-                    elif p_type == "SWORD": self.is_sword = False; print("Sword Mode ended")
+                    elif p_type == "SWORD": 
+                        # print(f"DEBUG: SWORD timer expired for player {1 if self.facing_direction==1 else 2}. Setting is_sword=False.") # DEBUG REMOVED
+                        self.is_sword = False; print("Sword Mode ended")
                 else:
                     self.active_powerups[p_type] = new_timer
         for p_type in expired_powerups:
@@ -1813,7 +1814,7 @@ class Ball:
             screen.blit(temp_surf, (int(self.x - shield_radius), int(self.y - shield_radius)))
 
 # --- Game Setup ---
-pygame.init(); pygame.mixer.pre_init(44100, -16, 2, 512); pygame.mixer.init()
+pygame.init(); pygame.mixer.pre_init(44100, -16, 2, 512); pygame.mixer.init(channels=16) # Request 16 channels
 announcement_channel = pygame.mixer.Channel(0)
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT)); pygame.display.set_caption("Ciao Kick!");
 clock = pygame.time.Clock()
@@ -1887,37 +1888,48 @@ def load_sounds(sound_dir="sounds"):
 def play_sound(sound_list): # Modifierad för att implementera ljudsäkerhet
     global sound_last_played
     if not sound_list:
+        # print("play_sound called with empty list") # Debug
         return
-    
+
+    # print(f"play_sound attempting for sound type: {id(sound_list[0])}") # Debug
     ch = None # Initiera ch till None
-    
+
     # Skapa en dictionary för att lagra senaste tidpunkt för ljuduppspelning om den inte redan finns
     if 'sound_last_played' not in globals():
         global sound_last_played
         sound_last_played = {}
-    
+
     # Hämta aktuell tid
     current_time = time.time()
-    
+
     # Skapa nyckeln baserat på ID för första ljudet i listan (alla ljud i en grupp hanteras tillsammans)
     sound_key = id(sound_list[0]) if sound_list else None
-    
+
     # Kontrollera om ljudet nyligen har spelats
     if sound_key in sound_last_played:
         # Standard cooldown på 0.15 sekunder för alla ljud
         cooldown = 0.15
-        
+
         time_since_last_played = current_time - sound_last_played[sound_key]
         if time_since_last_played < cooldown:
-            # För tidigt att spela ljudet igen
+            # print(f"Sound {sound_key} throttled.") # Debug
             return
-    
+
     # Spela ljudet och uppdatera tidsstämpel
+    try:
         sound_to_play = random.choice(sound_list)
-        ch = pygame.mixer.find_channel(True)
-    if ch: 
-        ch.play(sound_to_play)
-        sound_last_played[sound_key] = current_time
+        # print(f"Attempting to find channel for sound: {sound_to_play}") # DEBUG REMOVED
+        ch = pygame.mixer.find_channel(True) # PROBLEM MIGHT BE HERE
+        if ch:
+            # print(f"Found channel {ch}. Playing sound {sound_to_play}") # DEBUG REMOVED
+            ch.play(sound_to_play)
+            sound_last_played[sound_key] = current_time
+        # else:
+            # print(f"Could not find channel for sound {sound_to_play}") # DEBUG REMOVED
+    except IndexError:
+        print("Error: sound_list was empty in play_sound") # Should not happen due to initial check, but safe
+    except Exception as e:
+        print(f"Error playing sound: {e}")
 def queue_sound(sound_list): # ... (no change) ...
     global announcement_queue
     if sound_list:
@@ -1998,7 +2010,9 @@ def start_new_match(): # Full reset for new match
     player1_score = 0; player2_score = 0; match_active = True; match_winner = None; match_over_timer = 0.0; match_end_sound_played = False
     announcement_queue = []; reset_positions()
     player1.active_powerups = {}; player1.is_flying = False; player1.is_big = False; player1.is_shrunk = False; player1.is_enormous_head = False; player1.jump_power = BASE_JUMP_POWER; player1.player_speed = BASE_PLAYER_SPEED; player1.calculate_current_sizes()
+    player1.is_sword = False # <<< ADDED RESET
     player2.active_powerups = {}; player2.is_flying = False; player2.is_big = False; player2.is_shrunk = False; player2.is_enormous_head = False; player2.jump_power = BASE_JUMP_POWER; player2.player_speed = BASE_PLAYER_SPEED; player2.calculate_current_sizes()
+    player2.is_sword = False # <<< ADDED RESET
     active_powerups = []
     ball_freeze_timer = 0.0; ball.is_frozen = False; ball.freeze_effect_timer = 0.0
     p1_shield_active = False; p1_shield_timer = 0.0; p2_shield_active = False; p2_shield_timer = 0.0

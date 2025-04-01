@@ -1411,15 +1411,17 @@ class StickMan: # Updated powerup dict/handling
                 base_angle_offset = -math.pi / 4
 
             # Set the angle for drawing and collision detection
-            # Old angle calculation that worked for hitting the ball
-            if self.facing_direction == 1:
-                self.sword_angle = base_angle_offset * self.facing_direction + (-math.pi / 2)  # Right-facing player
-            else:
-                self.sword_angle = base_angle_offset * self.facing_direction + (math.pi/2)  # Left-facing player
-            
+            # New simplified angle calculation:
+            # base_angle_offset is relative to forward horizontal (0 degrees)
+            if self.facing_direction == 1: # Facing right
+                self.sword_angle = base_angle_offset
+            else: # Facing left
+                # Mirror the angle around the vertical axis (pi radians)
+                self.sword_angle = math.pi - base_angle_offset
+
             if debug_mode:
                 print(f"Sword angle: {self.sword_angle}, Hand pos: {hand_pos}, Offset hand: {o_hand_pos}")
-                
+
             # Play sword swing sound if kicking
             # Removed duplicate sound playing since we now handle it in start_kick
 
@@ -1782,6 +1784,8 @@ def play_sound(sound_list): # Modifierad för att implementera ljudsäkerhet
     global sound_last_played
     if not sound_list:
         return
+    
+    ch = None # Initiera ch till None
     
     # Skapa en dictionary för att lagra senaste tidpunkt för ljuduppspelning om den inte redan finns
     if 'sound_last_played' not in globals():
@@ -2870,7 +2874,7 @@ while running:
             freeze_text = "BALL FROZEN: {:.1f}".format(ball_freeze_timer); freeze_surf = powerup_font.render(freeze_text, True, (180, 220, 255)); freeze_rect = freeze_surf.get_rect(midbottom=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 10)); screen.blit(freeze_surf, freeze_rect)
 
         # Debug info
-        if debug_mode:
+    if debug_mode:
             pass  # Add any additional debug info here
 
     pygame.display.flip()

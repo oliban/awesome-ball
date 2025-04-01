@@ -38,6 +38,17 @@ HEADBUTT_UP_FORCE = 15.0; HEADBUTT_VY_MULTIPLIER = 1.2
 HEADBUTT_PLAYER_VX_FACTOR = 0.6; HEADBUTT_POS_X_FACTOR = 0.15
 BALL_FRICTION = 0.99; BALL_BOUNCE = 0.7; GROUND_Y = SCREEN_HEIGHT - 50
 
+# --- Time of Day Constants ---
+TIMES_OF_DAY = ["Day", "Evening", "Night", "Morning"]
+TIME_OF_DAY_COLORS = {
+    "Day": SKY_BLUE,
+    "Evening": (180, 140, 190), # Purplish
+    "Night": (20, 20, 60),      # Dark blue
+    "Morning": (255, 180, 140)   # Orangey pink
+}
+STAR_COUNT = 50
+STARS = [(random.randint(0, SCREEN_WIDTH), random.randint(0, int(GROUND_Y * 0.8))) for _ in range(STAR_COUNT)] # Now GROUND_Y can be used
+
 # Collision Specific
 PLAYER_BODY_BOUNCE = 0.65; PLAYER_VEL_TRANSFER = 0.25
 MIN_BODY_BOUNCE_VEL = 1.5; PLAYER_BODY_COLLISION_FRAMES = 4
@@ -83,29 +94,61 @@ DEBUG_BG_COLOR = (220, 180, 255)
 DEBUG_MATCH_POINT_LIMIT = 1
 
 # --- Weather Effect Constants ---
-WEATHER_TYPES = ["SUNNY", "RAINY", "WINDY", "SNOWY", "FOGGY"]
+WEATHER_TYPES = ["SUNNY", "RAINY", "WINDY", "SNOWY", "FOGGY", "GOTHENBURG_WEATHER"]
 WEATHER_EFFECTS = {
     "SUNNY": {"gravity": 1.0, "background_color": (135, 206, 235)},  # Normal conditions
     "RAINY": {"gravity": 1.05, "background_color": (100, 149, 180)},  # Wet conditions
-    "WINDY": {"wind_force": 15.0, "background_color": (175, 196, 215)},  # Wind pushes objects
+    "WINDY": {"wind_force_range": (10.0, 25.0), "background_color": (175, 196, 215)}, # Wind pushes objects (random force)
     "SNOWY": {"gravity": 0.9, "background_color": (220, 230, 240)},  # Lower gravity
-    "FOGGY": {"gravity": 1.0, "background_color": (200, 200, 200)}  # Reduced visibility
+    "FOGGY": {"gravity": 1.0, "background_color": (200, 200, 200)},  # Reduced visibility
+    "GOTHENBURG_WEATHER": {"gravity": 1.1, "background_color": (90, 110, 130), "wind_force": 22.0, "wind_angle": math.pi * 0.85} # Heavy rain, strong side/up wind
 }
 WEATHER_PARTICLE_COUNT = {
     "SUNNY": 5,
     "RAINY": 40,
     "WINDY": 15,
     "SNOWY": 20,
-    "FOGGY": 0
+    "FOGGY": 0,
+    "GOTHENBURG_WEATHER": 70 # Heavy rain
 }
-WEATHER_WIND_DIRECTION = 1  # 1 = right, -1 = left (for wind effects)
+WEATHER_WIND_DIRECTION = 1  # 1 = right, -1 = left (for WINDY weather)
 WEATHER_WIND_CHANGE_TIMER = 0  # Timer for wind direction changes
+CURRENT_WIND_FORCE = 0 # Current randomized wind force for WINDY weather
 
-# Function to change wind direction
-def change_wind_direction():
-    global WEATHER_WIND_DIRECTION
-    WEATHER_WIND_DIRECTION = -WEATHER_WIND_DIRECTION
-    return WEATHER_WIND_DIRECTION
+# --- Weather Messages --- (Added)
+WEATHER_MESSAGES = {
+    "SUNNY": [
+        "What a lovely sunny day!",
+        "Perfect weather for some kickabout!",
+        "Don't forget sunscreen! Oh wait..."
+    ],
+    "RAINY": [
+        "Looks like rain...",
+        "A bit damp today, isn't it?",
+        "It's raining cats and dogs! (Not literally)"
+    ],
+    "WINDY": [
+        "Hold onto your hats, it's windy!",
+        "The wind is really picking up!",
+        "Whoosh! That's the sound of the wind."
+    ],
+    "SNOWY": [
+        "Snow is falling... gently?",
+        "Time for a snowball fight? No, football!",
+        "Brr! It's a bit chilly and snowy."
+    ],
+    "FOGGY": [
+        "Visibility is low due to fog.",
+        "Can you even see the ball?",
+        "Foggy conditions ahead!"
+    ],
+    "GOTHENBURG_WEATHER": [
+        "Ah, classic Gothenburg weather!",
+        "Rain, wind... just another Tuesday.",
+        "Heavy showers and strong winds! Typical."
+    ]
+}
+WEATHER_MESSAGE_DURATION = 5.5 # Seconds to display message (Increased from 2.5)
 
 # --- Game State Constants ---
 MATCH_POINT_LIMIT = 5
@@ -261,6 +304,23 @@ def draw_offscreen_arrow(s, ball, p_pos):
     ang = math.atan2(ty - ay, tx - ax); p1 = (ar_sz, 0); p2 = (-ar_sz / 2, -ar_sz / 2); p3 = (-ar_sz / 2, ar_sz / 2)
     cos_a, sin_a = math.cos(ang), math.sin(ang); p1r = (p1[0] * cos_a - p1[1] * sin_a, p1[0] * sin_a + p1[1] * cos_a); p2r = (p2[0] * cos_a - p2[1] * sin_a, p2[0] * sin_a + p2[1] * cos_a); p3r = (p3[0] * cos_a - p3[1] * sin_a, p3[0] * sin_a + p3[1] * cos_a)
     pts = [(ax + p1r[0], ay + p1r[1]), (ax + p2r[0], ay + p2r[1]), (ax + p3r[0], ay + p3r[1])]; pygame.draw.polygon(s, ARROW_RED, [(int(p[0]), int(p[1])) for p in pts])
+
+# Function to linearly interpolate between two colors
+def lerp_color(color1, color2, factor):
+    factor = max(0.0, min(1.0, factor)) # Clamp factor between 0 and 1
+    r = int(color1[0] + (color2[0] - color1[0]) * factor)
+    g = int(color1[1] + (color2[1] - color1[1]) * factor)
+    b = int(color1[2] + (color2[2] - color1[2]) * factor)
+    return (r, g, b)
+
+# Function to draw a simple moon
+def draw_moon(surface, position, size, color):
+    pygame.draw.circle(surface, color, position, size)
+    # Optional: Add a darker circle offset for a crescent effect
+    dark_color = (max(0, color[0]-50), max(0, color[1]-50), max(0, color[2]-50))
+    offset_x = size // 3
+    offset_y = -size // 4
+    pygame.draw.circle(surface, dark_color, (position[0] + offset_x, position[1] + offset_y), size)
 
 # --- SWORD Powerup Constants --- (Moved here)
 POWERUP_SWORD_DURATION = 30.0  # Increased from 15.0 to 30.0
@@ -497,6 +557,19 @@ class WeatherParticle:
             self.color = (255, 255, 255, random.randint(5, 20))
             self.lifespan = random.uniform(3.0, 8.0)
             
+        elif self.weather_type == "GOTHENBURG_WEATHER":
+            # Gothenburg rain drops (heavy, sideways)
+            self.x = random.randint(-50, self.screen_width + 50)
+            self.y = random.randint(-50, self.screen_height + 50)
+            self.size = random.randint(2, 3)
+            self.length = random.randint(10, 20)
+            self.speed = random.uniform(300, 500)
+            self.color = (100, 120, 180, random.randint(180, 240))
+            self.lifespan = None
+            # Get the fixed wind angle from WEATHER_EFFECTS
+            self.angle = WEATHER_EFFECTS["GOTHENBURG_WEATHER"].get("wind_angle", math.pi) + random.uniform(-0.1, 0.1)
+            
+            
     def update(self, dt):
         if self.lifespan is not None:
             self.lifespan -= dt
@@ -559,6 +632,16 @@ class WeatherParticle:
             # If off-screen, reset
             if self.x > self.screen_width + self.size:
                 self.reset()
+                
+        elif self.weather_type == "GOTHENBURG_WEATHER":
+            # Move rain drops along the fixed wind angle
+            self.x += self.speed * math.cos(self.angle) * dt
+            self.y += self.speed * math.sin(self.angle) * dt
+            
+            # Reset if far off-screen
+            if (self.x < -100 or self.x > self.screen_width + 100 or
+                self.y < -100 or self.y > self.screen_height + 100):
+                self.reset()
     
     def draw(self, screen):
         if self.weather_type == "SUNNY":
@@ -567,11 +650,16 @@ class WeatherParticle:
             pygame.draw.circle(surf, self.color, (self.size, self.size), self.size)
             screen.blit(surf, (int(self.x - self.size), int(self.y - self.size)))
             
-        elif self.weather_type == "RAINY":
-            # Draw rain drop as a line
-            start_pos = (int(self.x), int(self.y))
-            end_pos = (int(self.x - self.length * 0.5), int(self.y + self.length))
-            pygame.draw.line(screen, self.color, start_pos, end_pos, self.size)
+        elif self.weather_type == "RAINY" or self.weather_type == "GOTHENBURG_WEATHER": # Draw rain/gothenburg rain
+            # Draw rain drop as a line along its angle
+            start_x = int(self.x)
+            start_y = int(self.y)
+            # Use angle for direction (gothenburg has a specific angle, rain is mostly vertical)
+            draw_angle = math.pi/2 + 0.1 if self.weather_type == "RAINY" else self.angle
+            end_x = int(start_x + self.length * math.cos(draw_angle))
+            end_y = int(start_y + self.length * math.sin(draw_angle))
+            
+            pygame.draw.line(screen, self.color, (start_x, start_y), (end_x, end_y), self.size)
             
         elif self.weather_type == "WINDY":
             # Draw wind debris as rotating rectangles
@@ -580,18 +668,6 @@ class WeatherParticle:
             rotated = pygame.transform.rotate(rect_surf, self.angle * 57.3)  # Convert to degrees
             screen.blit(rotated, (int(self.x - rotated.get_width() // 2),
                                 int(self.y - rotated.get_height() // 2)))
-            
-        elif self.weather_type == "SNOWY":
-            # Draw snowflake as a small circle
-            surf = pygame.Surface((self.size * 2, self.size * 2), pygame.SRCALPHA)
-            pygame.draw.circle(surf, self.color, (self.size, self.size), self.size)
-            screen.blit(surf, (int(self.x - self.size), int(self.y - self.size)))
-            
-        elif self.weather_type == "FOGGY":
-            # Draw fog patch as a transparent circle
-            surf = pygame.Surface((self.size * 2, self.size * 2), pygame.SRCALPHA)
-            pygame.draw.circle(surf, self.color, (self.size, self.size), self.size)
-            screen.blit(surf, (int(self.x - self.size), int(self.y - self.size)))
 
 class StickMan: # Updated powerup dict/handling
     # Add team_color and team_accent to the arguments, with defaults
@@ -794,6 +870,20 @@ class StickMan: # Updated powerup dict/handling
              self.calculate_current_sizes()
 
         current_gravity = GRAVITY * POWERUP_LOW_GRAVITY_FACTOR if "LOW_GRAVITY" in self.active_powerups else GRAVITY
+        weather_effect = WEATHER_EFFECTS.get(current_weather, WEATHER_EFFECTS["SUNNY"])
+        current_gravity *= weather_effect.get("gravity", 1.0) # Apply weather gravity multiplier
+        
+        # Apply wind force to player
+        if current_weather == "WINDY":
+            # Use the currently randomized wind force and direction
+            self.vx += (CURRENT_WIND_FORCE * WEATHER_WIND_DIRECTION * 0.02 * dt) # Apply wind force to vx (Increased multiplier from 0.01)
+        elif current_weather == "GOTHENBURG_WEATHER":
+            # Apply Gothenburg specific wind
+             wind_force = weather_effect.get("wind_force", 0.0)
+             wind_angle = weather_effect.get("wind_angle", math.pi) # Default to horizontal left if not defined
+             self.vx += (wind_force * math.cos(wind_angle) * 0.02 * dt) # Increased multiplier from 0.01
+             self.vy += (wind_force * math.sin(wind_angle) * 0.01 * dt) # Increased multiplier from 0.005
+            
         was_airborne = self.is_jumping or (not self.on_other_player_head and self.y < self.base_y); time_ms = pygame.time.get_ticks()
         was_on_head = self.on_other_player_head; landed_on_head_this_frame = False; landed_on_ground_this_frame = False
         platform_y = self.base_y; other_head_pos, other_head_radius = other_player.get_head_position_radius()
@@ -1233,7 +1323,14 @@ def load_sounds(sound_dir="sounds"):
         "nils_ahead": ["nils_ahead.wav"],
         "harry_ahead": ["harry_ahead.wav"],
         "super_jackpot": ["super_jackpot.wav"],
-        "sword_hit": ["sword_hit.wav"] # Sound for sword hitting objects
+        "sword_hit": ["sword_hit.wav"], # Sound for sword hitting objects
+        # Weather announcement sounds
+        # "weather_sunny": ["sunny.wav"],
+        # "weather_rainy": ["rainy.wav"],
+        # "weather_windy": ["windy.wav"],
+        # "weather_snowy": ["snowy.wav"],
+        # "weather_foggy": ["foggy.wav"],
+        # "weather_gothenburg": ["gothenburg_weather.wav"]
     }
     for name, filenames in sound_files.items():
         sounds[name] = []
@@ -1255,10 +1352,21 @@ def load_sounds(sound_dir="sounds"):
                 except pygame.error as e: print(f"Warning: Could not load sound '{path}': {e}"); break
             else: break
         if not sounds[goal_key]: print(f"Warning: No goal sounds found for Player {player_num}")
-    required_keys = ["goal_p1", "goal_p2", "kick", "jump", "land", "wall_hit", "player_bump", "headbutt", "body_hit", "combo", "ball_bounce", "nils_wins", "harry_wins", "nils_ahead", "harry_ahead", "super_jackpot"]
+    required_keys = ["goal_p1", "goal_p2", "kick", "jump", "land", "wall_hit", "player_bump", "headbutt", "body_hit", "combo", "ball_bounce", "nils_wins", "harry_wins", "nils_ahead", "harry_ahead", "super_jackpot", # Add weather keys
+                     "weather_sunny", "weather_rainy", "weather_windy", "weather_snowy", "weather_foggy", "weather_gothenburg"]
     for key in required_keys:
         if key not in sounds: sounds[key] = []
     if 'numbers' not in sounds: sounds['numbers'] = {}
+    
+    # Explicitly remove weather sound keys if commented out, so the check later doesn't fail
+    weather_keys_to_remove = ["weather_sunny", "weather_rainy", "weather_windy", "weather_snowy", "weather_foggy", "weather_gothenburg"]
+    for w_key in weather_keys_to_remove:
+        if w_key in sounds:
+             # Check if the sound list is empty or not properly loaded (might happen if file existed but failed loading)
+            if not sounds[w_key]: 
+                del sounds[w_key]
+                print(f"Ensured removal of commented/missing weather sound key: {w_key}")
+
     return sounds
 # --- Sound Playing Helpers ---
 def play_sound(sound_list): # ... (no change) ...
@@ -1319,6 +1427,8 @@ p2_shield_active = False; p2_shield_timer = 0.0
 jackpot_triggered_this_match = False
 p1_goal_enlarged_timer = 0.0
 p2_goal_enlarged_timer = 0.0
+weather_message_text = ""
+weather_message_timer = 0.0
 
 # --- Weather Variables ---
 current_weather = random.choice(WEATHER_TYPES)
@@ -1338,7 +1448,7 @@ def reset_positions(): # Keeps powerups active, resets player state only
     current_hit_count = 0; ball_was_on_ground = False; p1_can_headbutt = True; p2_can_headbutt = True; p1_body_collision_timer = 0; p2_body_collision_timer = 0;
     active_rockets = []; active_explosions = []
 def start_new_match(): # Full reset for new match
-    global player1_score, player2_score, match_active, match_winner, match_over_timer, match_end_sound_played, announcement_queue, powerup_spawn_timer, active_powerups, ball_freeze_timer, p1_shield_active, p1_shield_timer, p2_shield_active, p2_shield_timer, jackpot_triggered_this_match, p1_goal_enlarged_timer, p2_goal_enlarged_timer, current_weather, weather_particles, weather_wind_change_timer
+    global player1_score, player2_score, match_active, match_winner, match_over_timer, match_end_sound_played, announcement_queue, powerup_spawn_timer, active_powerups, ball_freeze_timer, p1_shield_active, p1_shield_timer, p2_shield_active, p2_shield_timer, jackpot_triggered_this_match, p1_goal_enlarged_timer, p2_goal_enlarged_timer, current_weather, weather_particles, weather_wind_change_timer, CURRENT_WIND_FORCE, WEATHER_WIND_DIRECTION, current_time_of_day, weather_message_text, weather_message_timer # Added message variables
     player1_score = 0; player2_score = 0; match_active = True; match_winner = None; match_over_timer = 0.0; match_end_sound_played = False
     announcement_queue = []; reset_positions()
     player1.active_powerups = {}; player1.is_flying = False; player1.is_big = False; player1.is_shrunk = False; player1.is_enormous_head = False; player1.jump_power = BASE_JUMP_POWER; player1.player_speed = BASE_PLAYER_SPEED; player1.calculate_current_sizes()
@@ -1351,15 +1461,47 @@ def start_new_match(): # Full reset for new match
     powerup_spawn_timer = random.uniform(POWERUP_SPAWN_INTERVAL_MIN, POWERUP_SPAWN_INTERVAL_MAX)
     jackpot_triggered_this_match = False
     
+    # Determine Time of Day based on total games played
+    total_games = p1_games_won + p2_games_won
+    time_index = total_games % len(TIMES_OF_DAY)
+    current_time_of_day = TIMES_OF_DAY[time_index]
+    print(f"Starting match at time: {current_time_of_day}")
+    
     # Set up new weather conditions for this match
     current_weather = random.choice(WEATHER_TYPES)
     weather_particles = []
     weather_wind_change_timer = 15.0
+    CURRENT_WIND_FORCE = 0 # Reset current wind force
+    WEATHER_WIND_DIRECTION = random.choice([-1, 1]) # Random initial direction for WINDY
+    
+    weather_effect = WEATHER_EFFECTS.get(current_weather, {})
+    if current_weather == "WINDY":
+        min_force, max_force = weather_effect.get("wind_force_range", (0.0, 0.0))
+        CURRENT_WIND_FORCE = random.uniform(min_force, max_force)
+        print(f"Starting WINDY match. Initial Force: {CURRENT_WIND_FORCE:.1f}, Direction: {'RIGHT' if WEATHER_WIND_DIRECTION > 0 else 'LEFT'}")
+    elif current_weather == "GOTHENBURG_WEATHER":
+         print(f"Starting GOTHENBURG_WEATHER match. Brace yourselves!")
+    else:
+         print(f"Starting {current_weather} match.")
+         
     # Create weather particles
     for _ in range(WEATHER_PARTICLE_COUNT.get(current_weather, 0)):
         weather_particles.append(WeatherParticle(current_weather, SCREEN_WIDTH, SCREEN_HEIGHT))
     
     print(f"Starting new match with {current_weather} weather.")
+
+    # Select and set weather message (Added)
+    possible_messages = WEATHER_MESSAGES.get(current_weather, [f"{current_weather.replace('_', ' ').title()} weather."])
+    weather_message_text = random.choice(possible_messages)
+    weather_message_timer = WEATHER_MESSAGE_DURATION
+    
+    # Queue weather sound (If sound files exist)
+    weather_sound_key = f"weather_{current_weather.lower()}"
+    if loaded_sounds.get(weather_sound_key):
+        # Queue sound after a short delay to not overlap with message
+        # (We'll handle the queuing logic later if needed, for now just prepare key)
+        print(f"Attempting to queue sound: {weather_sound_key}") 
+        # queue_sound(loaded_sounds[weather_sound_key]) # Uncomment later if sound queuing is desired
 def start_new_game(): # Full reset
     global p1_games_won, p2_games_won, game_scores, game_over, overall_winner, announcement_queue, game_over_sound_played, active_powerups
     p1_games_won = 0; p2_games_won = 0; game_scores = []; game_over = False; overall_winner = None; game_over_sound_played = False
@@ -1667,8 +1809,19 @@ while running:
                     # Reset wind change timer if it's windy
                     if current_weather == "WINDY":
                         weather_wind_change_timer = random.uniform(10.0, 20.0)
+                        # Update CURRENT_WIND_FORCE and WEATHER_WIND_DIRECTION as well
+                        weather_effect = WEATHER_EFFECTS.get(current_weather, {})
+                        min_force, max_force = weather_effect.get("wind_force_range", (0.0, 0.0))
+                        CURRENT_WIND_FORCE = random.uniform(min_force, max_force)
+                        WEATHER_WIND_DIRECTION = random.choice([-1, 1])
                     
                     print(f"Weather changed from {old_weather} to {current_weather}")
+
+                    # Select and set weather message (ADDED FOR MANUAL CHANGE)
+                    possible_messages = WEATHER_MESSAGES.get(current_weather, [f"{current_weather.replace('_', ' ').title()} weather."])
+                    weather_message_text = random.choice(possible_messages)
+                    weather_message_timer = WEATHER_MESSAGE_DURATION
+
                 else:
                     print("Weather can only be changed during an active match")
             elif event.key == pygame.K_6:
@@ -1804,36 +1957,37 @@ while running:
         for p in weather_particles:
             p.update(dt)
             
-        # Handle wind direction changes for WINDY weather
         if current_weather == "WINDY":
-            # Remove global WEATHER_WIND_DIRECTION
             weather_wind_change_timer -= dt
             if weather_wind_change_timer <= 0:
-                # Flip the wind direction
-                WEATHER_WIND_DIRECTION = -WEATHER_WIND_DIRECTION
-                print(f"Wind direction changed to {'RIGHT' if WEATHER_WIND_DIRECTION > 0 else 'LEFT'}")
+                WEATHER_WIND_DIRECTION = -WEATHER_WIND_DIRECTION # Flip direction
+                min_force, max_force = WEATHER_EFFECTS["WINDY"].get("wind_force_range", (0.0, 0.0))
+                CURRENT_WIND_FORCE = random.uniform(min_force, max_force) # New random force
+                print(f"Wind changed! New Force: {CURRENT_WIND_FORCE:.1f}, Direction: {'RIGHT' if WEATHER_WIND_DIRECTION > 0 else 'LEFT'}")
                 
                 # Create wind change particles/effects
-                wind_color = (200, 200, 255, 150)  # Light blue-ish with transparency
+                wind_color = (200, 200, 255, 150) 
                 for _ in range(20):
                     start_x = random.randint(0, SCREEN_WIDTH)
                     start_y = random.randint(50, GROUND_Y - 50)
+                    # Angle override based on new direction
+                    angle_ov = 0 if WEATHER_WIND_DIRECTION > 0 else math.pi 
                     particles.append(Particle(
                         start_x, start_y, 
                         colors=[wind_color], 
-                        speed_min=WEATHER_WIND_DIRECTION * 200, 
-                        speed_max=WEATHER_WIND_DIRECTION * 400, 
+                        speed_min=CURRENT_WIND_FORCE * 5, # Adjusted speed based on force
+                        speed_max=CURRENT_WIND_FORCE * 10, 
                         size=3, 
-                        angle_override=math.pi if WEATHER_WIND_DIRECTION < 0 else 0
+                        angle_override=angle_ov
                     ))
                 
-                # Reset timer for next change
-                weather_wind_change_timer = random.uniform(10.0, 20.0)
+                weather_wind_change_timer = random.uniform(8.0, 18.0) # Reset timer
                 
-                # Recreate wind particles with new direction
-                for i, p in enumerate(weather_particles):
-                    if p.weather_type == "WINDY":
-                        weather_particles[i] = WeatherParticle("WINDY", SCREEN_WIDTH, SCREEN_HEIGHT)
+                # Recreate wind particles with new direction/speed potentially
+                # (Optional: Could make existing particles change direction too)
+                # for i, p in enumerate(weather_particles):
+                #    if p.weather_type == "WINDY":
+                #        p.speed = random.uniform(100, 200) * WEATHER_WIND_DIRECTION
 
         # --- Power-up Collection ---
         collected_powerups_indices = [] # ... (unchanged logic including BALL_FREEZE trigger) ...
@@ -2004,21 +2158,34 @@ while running:
 
 
     # --- Drawing ---
-    # Get weather background color
-    weather_effect = WEATHER_EFFECTS.get(current_weather, WEATHER_EFFECTS["SUNNY"])
-    bg_color = weather_effect.get("background_color", SKY_BLUE)
+    # Determine background color based on weather and time of day
+    weather_effect = WEATHER_EFFECTS.get(current_weather, {})
+    # Default to time of day color
+    bg_color = TIME_OF_DAY_COLORS.get(current_time_of_day, SKY_BLUE) 
+    # Override if weather has a specific background color
+    if "background_color" in weather_effect:
+        bg_color = weather_effect["background_color"]
+        
     if debug_mode: bg_color = DEBUG_BG_COLOR
     screen.fill(bg_color)
+    
+    # Draw stars if it's night
+    if current_time_of_day == "Night":
+        star_color = (255, 255, 220) # Pale yellow
+        for x, y in STARS:
+            size = random.randint(1, 2)
+            pygame.draw.rect(screen, star_color, (x, y, size, size))
 
     # Draw weather effects in the background
     for p in weather_particles:
         p.draw(screen)
         
     # Add fog overlay if foggy
-    if current_weather == "FOGGY":
-        fog_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        fog_surf.fill((255, 255, 255, 70))  # Semi-transparent white
-        screen.blit(fog_surf, (0, 0))
+    # MOVED FOG DRAWING TO LATER
+    # if current_weather == "FOGGY":
+    #     fog_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+    #     fog_surf.fill((255, 255, 255, 70))  # Semi-transparent white
+    #     screen.blit(fog_surf, (0, 0))
 
     pygame.draw.rect(screen, GRASS_GREEN, (0, GROUND_Y, SCREEN_WIDTH, SCREEN_HEIGHT - GROUND_Y))
     # Draw Goals using effective height/y based on timers
@@ -2058,38 +2225,44 @@ while running:
     for e in active_explosions: e.draw(screen)
     draw_offscreen_arrow(screen, ball, None)
 
+    # Draw fog overlay AFTER game elements but BEFORE UI
+    if current_weather == "FOGGY":
+        fog_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        fog_surf.fill((210, 210, 215, 130))  # Slightly grayish and much less transparent
+        screen.blit(fog_surf, (0, 0))
+
     # --- Draw UI ---
     draw_scoreboard(screen, player1_score, player2_score, p1_games_won, p2_games_won, font_large, font_medium, font_small, goal_message_timer > 0 or match_over_timer > 0)
     draw_game_scores(screen, game_scores, font_small)
     
     # Draw weather info
     weather_font = font_small
-    weather_label = f"Weather: {current_weather.capitalize()}"
-    weather_effect = WEATHER_EFFECTS.get(current_weather, WEATHER_EFFECTS["SUNNY"])
+    weather_label = f"Weather: {current_weather.replace('_', ' ').title()}"
+    weather_effect = WEATHER_EFFECTS.get(current_weather, {})
     effects_text = []
     
     if "gravity" in weather_effect and weather_effect["gravity"] != 1.0:
-        if weather_effect["gravity"] < 1.0:
-            effects_text.append("Low gravity")
-        else:
-            effects_text.append("High gravity")
+        if weather_effect["gravity"] < 1.0: effects_text.append("Low gravity")
+        else: effects_text.append("High gravity")
             
     if current_weather == "WINDY":
         direction = "→" if WEATHER_WIND_DIRECTION > 0 else "←"
-        effects_text.append(f"Wind {direction}")
+        effects_text.append(f"Wind {direction} ({CURRENT_WIND_FORCE:.0f})")
+    elif current_weather == "GOTHENBURG_WEATHER":
+        effects_text.append(f"Wind ↗ ({weather_effect.get('wind_force', 0.0):.0f})") # Indicate direction
         
-    if current_weather == "FOGGY":
-        effects_text.append("Low visibility")
+    if current_weather == "FOGGY": effects_text.append("Low visibility")
     
-    effects_str = ", ".join(effects_text)
-    weather_text = f"{weather_label} ({effects_str})"
+    effects_str = ", ".join(effects_text) if effects_text else "Normal"
+    weather_text = f"{weather_label} [{effects_str}]"
     
     weather_color = {
         "SUNNY": (255, 200, 0),
         "RAINY": (100, 140, 255),
         "WINDY": (200, 200, 200),
         "SNOWY": (220, 240, 255),
-        "FOGGY": (180, 180, 180)
+        "FOGGY": (180, 180, 180),
+        "GOTHENBURG_WEATHER": (120, 150, 200)
     }.get(current_weather, WHITE)
     
     weather_surf = weather_font.render(weather_text, True, weather_color)
@@ -2102,9 +2275,74 @@ while running:
     screen.blit(weather_bg_surf, weather_bg.topleft)
     screen.blit(weather_surf, weather_rect)
     
+    # Draw Weather Message (Added)
+    if weather_message_timer > 0:
+        # weather_message_timer -= dt # Decrease timer here << MOVED
+        if weather_message_timer > 0: # Check again in case dt made it zero
+            msg_font = font_medium # Use medium font for message
+            msg_surf = msg_font.render(weather_message_text, True, WHITE)
+            msg_rect = msg_surf.get_rect(centerx=SCREEN_WIDTH // 2, centery=SCREEN_HEIGHT // 3)
+            
+            # Background for the message
+            msg_bg_rect = msg_rect.inflate(20, 10)
+            msg_bg_surf = pygame.Surface(msg_bg_rect.size, pygame.SRCALPHA)
+            msg_bg_surf.fill((0, 0, 50, 180)) # Dark blueish background
+            screen.blit(msg_bg_surf, msg_bg_rect.topleft)
+            screen.blit(msg_surf, msg_rect)
+        weather_message_timer -= dt # << MOVED HERE
+
     if goal_message_timer > 0 and match_active:
         goal_text_surf = font_goal.render("GOAL!", True, ITALY_RED); goal_text_rect = goal_text_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3)); bg_rect = goal_text_rect.inflate(20, 10); bg_surf = pygame.Surface(bg_rect.size, pygame.SRCALPHA); bg_surf.fill((WHITE[0], WHITE[1], WHITE[2], 180)); screen.blit(bg_surf, bg_rect.topleft); screen.blit(goal_text_surf, goal_text_rect)
+    # --- Modified Match Over Drawing with Transition ---
     if match_over_timer > 0 and not game_over:
+        # Calculate transition progress (0.0 to 1.0) as timer counts down
+        transition_progress = 1.0 - (match_over_timer / MATCH_OVER_DURATION)
+        
+        # Determine colors for transition
+        # Color of the match that just ended
+        current_total_games = p1_games_won + p2_games_won -1 # -1 because score is updated *before* this runs
+        current_time_index = current_total_games % len(TIMES_OF_DAY)
+        start_time_of_day = TIMES_OF_DAY[current_time_index]
+        start_color = TIME_OF_DAY_COLORS.get(start_time_of_day, SKY_BLUE)
+        # Check if weather had an override for the completed match (Need to store last weather? Or approximate)
+        # For simplicity, we'll just use the time_of_day color for the start transition.
+        
+        night_color = TIME_OF_DAY_COLORS["Night"]
+        
+        # Color for the upcoming match
+        next_total_games = p1_games_won + p2_games_won
+        next_time_index = next_total_games % len(TIMES_OF_DAY)
+        next_time_of_day = TIMES_OF_DAY[next_time_index]
+        end_color = TIME_OF_DAY_COLORS.get(next_time_of_day, SKY_BLUE)
+        # Consider next match's weather override? Too complex for transition. Use time_of_day.
+        
+        # Interpolate background color
+        if transition_progress < 0.5: # Fade to night
+            factor = transition_progress * 2 # Scale 0.0 -> 1.0
+            bg_color = lerp_color(start_color, night_color, factor)
+        else: # Fade from night to next day
+            factor = (transition_progress - 0.5) * 2 # Scale 0.0 -> 1.0
+            bg_color = lerp_color(night_color, end_color, factor)
+            
+        # Draw transitioning background
+        screen.fill(bg_color)
+        
+        # Draw moon near the middle of the transition (peak night)
+        if 0.4 < transition_progress < 0.6:
+            moon_size = 30
+            moon_pos = (SCREEN_WIDTH - moon_size * 2, moon_size * 2)
+            moon_color = (255, 255, 220)
+            draw_moon(screen, moon_pos, moon_size, moon_color)
+        elif transition_progress >= 0.5 and next_time_of_day == "Night": # Also draw stars if next phase is night
+            star_color = (255, 255, 220)
+            for x, y in STARS:
+                size = random.randint(1, 2)
+                pygame.draw.rect(screen, star_color, (x, y, size, size))
+
+        # Draw grass over the transitioning background
+        pygame.draw.rect(screen, GRASS_GREEN, (0, GROUND_Y, SCREEN_WIDTH, SCREEN_HEIGHT - GROUND_Y))
+        
+        # Draw the text overlay
         winner_name = "Nils" if match_winner == 1 else "Harry"; match_win_text = f"{winner_name} Wins the Match!"; match_win_surf = font_large.render(match_win_text, True, YELLOW); match_win_rect = match_win_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30))
         next_match_surf = font_medium.render("Next Match Starting...", True, WHITE); next_match_rect = next_match_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30))
         bg_rect = match_win_rect.union(next_match_rect).inflate(40, 20); bg_surf = pygame.Surface(bg_rect.size, pygame.SRCALPHA); bg_surf.fill((0, 0, 100, 200)); screen.blit(bg_surf, bg_rect.topleft)

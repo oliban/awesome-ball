@@ -1081,25 +1081,25 @@ class StickMan: # Updated powerup dict/handling
         
         # Uppdatera position baserat på fysik
         if not was_on_head and not was_on_left_crossbar and not was_on_right_crossbar:
-            self.vy += GRAVITY
+            self.vy += current_gravity # <<< FIX: Använd beräknad current_gravity
         elif was_on_head and not is_aligned_for_head:
             self.on_other_player_head = False
             self.is_jumping = True
-            self.vy += GRAVITY
+            self.vy += current_gravity # <<< FIX: Använd beräknad current_gravity
         elif was_on_head and is_aligned_for_head:
             self.y = head_top_y
             self.vy = 0
         elif was_on_left_crossbar and not is_aligned_for_left_crossbar:
             self.on_left_crossbar = False
             self.is_jumping = True
-            self.vy += GRAVITY
+            self.vy += current_gravity # <<< FIX: Använd beräknad current_gravity
         elif was_on_left_crossbar and is_aligned_for_left_crossbar:
             self.y = left_crossbar_top
             self.vy = 0
         elif was_on_right_crossbar and not is_aligned_for_right_crossbar:
             self.on_right_crossbar = False
             self.is_jumping = True
-            self.vy += GRAVITY
+            self.vy += current_gravity # <<< FIX: Använd beräknad current_gravity
         elif was_on_right_crossbar and is_aligned_for_right_crossbar:
             self.y = right_crossbar_top
             self.vy = 0

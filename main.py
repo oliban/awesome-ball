@@ -5,6 +5,7 @@ import sys
 import math
 import random
 import os
+import time
 from datetime import datetime
 
 # --- Get Timestamp ---
@@ -242,14 +243,152 @@ def draw_rotated_rectangle(surface, color, rect_center, width, height, angle_rad
 def draw_goal_isometric(surface, goal_line_x, goal_y, goal_height, depth_x, depth_y, thickness, post_color, net_color, enlarged_height=0):
     effective_goal_height = goal_height + enlarged_height
     effective_goal_y = goal_y - enlarged_height
-    front_top = (goal_line_x, effective_goal_y); front_bottom = (goal_line_x, effective_goal_y + effective_goal_height)
-    back_x = goal_line_x + depth_x; back_top_y = effective_goal_y + depth_y; back_bottom_y = effective_goal_y + effective_goal_height + depth_y
-    back_top = (back_x, back_top_y); back_bottom = (back_x, back_bottom_y)
-    ft_int = (int(front_top[0]), int(front_top[1])); fb_int = (int(front_bottom[0]), int(front_bottom[1]))
-    bt_int = (int(back_top[0]), int(back_top[1])); bb_int = (int(back_bottom[0]), int(back_bottom[1]))
-    pygame.draw.line(surface, post_color, bt_int, bb_int, thickness); pygame.draw.line(surface, post_color, bt_int, ft_int, thickness)
-    pygame.draw.line(surface, post_color, bb_int, fb_int, thickness); pygame.draw.line(surface, post_color, ft_int, fb_int, thickness)
-    pygame.draw.line(surface, net_color, ft_int, bb_int, 1); pygame.draw.line(surface, net_color, fb_int, bt_int, 1)
+    
+    # Calculate goal dimensions - make a rectangular box
+    goal_width = abs(depth_x) * 2.0  # Wider goal
+    goal_depth = abs(depth_x) * 1.2   # Deeper goal
+    
+    # Determine direction for proper isometric display
+    depth_dir = 1 if depth_x > 0 else -1
+    
+    # Calculate key points for the goal frame
+    # Front face points
+    front_left_top = (goal_line_x - goal_width/2, effective_goal_y)
+    front_right_top = (goal_line_x + goal_width/2, effective_goal_y)
+    front_left_bottom = (goal_line_x - goal_width/2, effective_goal_y + effective_goal_height)
+    front_right_bottom = (goal_line_x + goal_width/2, effective_goal_y + effective_goal_height)
+    
+    # Back face points (with depth)
+    back_left_top = (front_left_top[0] + depth_dir * goal_depth, front_left_top[1] + depth_y/3)
+    back_right_top = (front_right_top[0] + depth_dir * goal_depth, front_right_top[1] + depth_y/3)
+    back_left_bottom = (front_left_bottom[0] + depth_dir * goal_depth, front_left_bottom[1])  # Keep bottom level
+    back_right_bottom = (front_right_bottom[0] + depth_dir * goal_depth, front_right_bottom[1])  # Keep bottom level
+    
+    # Convert all points to integers for drawing
+    flt = (int(front_left_top[0]), int(front_left_top[1]))
+    frt = (int(front_right_top[0]), int(front_right_top[1]))
+    flb = (int(front_left_bottom[0]), int(front_left_bottom[1]))
+    frb = (int(front_right_bottom[0]), int(front_right_bottom[1]))
+    
+    blt = (int(back_left_top[0]), int(back_left_top[1]))
+    brt = (int(back_right_top[0]), int(back_right_top[1]))
+    blb = (int(back_left_bottom[0]), int(back_left_bottom[1]))
+    brb = (int(back_right_bottom[0]), int(back_right_bottom[1]))
+    
+    # Draw goal frame (white posts and crossbar) - thicker
+    post_thickness = thickness + 4  # Increased thickness
+    crossbar_thickness = thickness + 5  # Thicker crossbar
+    crossbar_height = 8  # Height of the crossbar (vertical thickness)
+    
+    # Draw the crossbar with height (multiple horizontal lines to create thickness)
+    for i in range(crossbar_height):
+        # Calculate vertical offset for each line of the crossbar
+        y_offset = i - crossbar_height//2
+        
+        # Front crossbar with thickness
+        pygame.draw.line(
+            surface, post_color, 
+            (flt[0], flt[1] + y_offset), 
+            (frt[0], frt[1] + y_offset), 
+            crossbar_thickness - abs(y_offset)  # Thinner at edges to create rounded effect
+        )
+        
+        # Back crossbar with thickness
+        pygame.draw.line(
+            surface, post_color, 
+            (blt[0], blt[1] + y_offset), 
+            (brt[0], brt[1] + y_offset), 
+            (crossbar_thickness - 1) - abs(y_offset)  # Slightly thinner in back
+        )
+        
+        # Left connector with thickness
+        pygame.draw.line(
+            surface, post_color, 
+            (flt[0], flt[1] + y_offset), 
+            (blt[0], blt[1] + y_offset), 
+            (crossbar_thickness - 1) - abs(y_offset)
+        )
+        
+        # Right connector with thickness
+        pygame.draw.line(
+            surface, post_color, 
+            (frt[0], frt[1] + y_offset), 
+            (brt[0], brt[1] + y_offset), 
+            (crossbar_thickness - 1) - abs(y_offset)
+        )
+    
+    # Draw vertical posts
+    pygame.draw.line(surface, post_color, flt, flb, post_thickness)  # Left post
+    pygame.draw.line(surface, post_color, frt, frb, post_thickness)  # Right post
+    pygame.draw.line(surface, post_color, blt, blb, post_thickness - 1)  # Back left post
+    pygame.draw.line(surface, post_color, brt, brb, post_thickness - 1)  # Back right post
+    
+    # Draw net with grid pattern (only above ground)
+    net_color_with_alpha = (net_color[0], net_color[1], net_color[2], 180)  # Add some transparency
+    
+    # Create temporary surface for drawing the net with alpha
+    net_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+    
+    # Vertical net lines on side panels (left and right)
+    num_vertical = 8
+    for i in range(1, num_vertical):
+        ratio = i / num_vertical
+        
+        # Left side panel
+        left_top = (flt[0] + (blt[0] - flt[0]) * ratio, flt[1] + (blt[1] - flt[1]) * ratio)
+        left_bottom = (flb[0] + (blb[0] - flb[0]) * ratio, flb[1])
+        pygame.draw.line(net_surf, net_color_with_alpha, left_top, left_bottom, 1)
+        
+        # Right side panel
+        right_top = (frt[0] + (brt[0] - frt[0]) * ratio, frt[1] + (brt[1] - frt[1]) * ratio)
+        right_bottom = (frb[0] + (brb[0] - frb[0]) * ratio, frb[1])
+        pygame.draw.line(net_surf, net_color_with_alpha, right_top, right_bottom, 1)
+    
+    # Horizontal net lines on side panels
+    num_horizontal = 10
+    for i in range(1, num_horizontal):
+        ratio = i / num_horizontal
+        
+        # Left side panel
+        left_front = (flt[0], flt[1] + (flb[1] - flt[1]) * ratio)
+        left_back = (blt[0], blt[1] + (blb[1] - blt[1]) * ratio)
+        pygame.draw.line(net_surf, net_color_with_alpha, left_front, left_back, 1)
+        
+        # Right side panel
+        right_front = (frt[0], frt[1] + (frb[1] - frt[1]) * ratio)
+        right_back = (brt[0], brt[1] + (brb[1] - brt[1]) * ratio)
+        pygame.draw.line(net_surf, net_color_with_alpha, right_front, right_back, 1)
+    
+    # Top panel - horizontal lines across depth
+    for i in range(1, num_vertical):
+        ratio = i / num_vertical
+        top_left = (flt[0] + (blt[0] - flt[0]) * ratio, flt[1] + (blt[1] - flt[1]) * ratio)
+        top_right = (frt[0] + (brt[0] - frt[0]) * ratio, frt[1] + (brt[1] - frt[1]) * ratio)
+        pygame.draw.line(net_surf, net_color_with_alpha, top_left, top_right, 1)
+    
+    # Top panel - horizontal lines across width
+    for i in range(1, num_horizontal):
+        ratio = i / num_horizontal
+        top_left = (flt[0] + (frt[0] - flt[0]) * ratio, flt[1])
+        top_back = (blt[0] + (brt[0] - blt[0]) * ratio, blt[1])
+        pygame.draw.line(net_surf, net_color_with_alpha, top_left, top_back, 1)
+    
+    # Back panel - vertical lines
+    for i in range(1, num_horizontal):
+        ratio = i / num_horizontal
+        back_top = (blt[0] + (brt[0] - blt[0]) * ratio, blt[1])
+        back_bottom = (blb[0] + (brb[0] - blb[0]) * ratio, blb[1])
+        pygame.draw.line(net_surf, net_color_with_alpha, back_top, back_bottom, 1)
+    
+    # Back panel - horizontal lines
+    for i in range(1, num_vertical):
+        ratio = i / num_vertical
+        back_left = (blt[0], blt[1] + (blb[1] - blt[1]) * ratio)
+        back_right = (brt[0], brt[1] + (brb[1] - brt[1]) * ratio)
+        pygame.draw.line(net_surf, net_color_with_alpha, back_left, back_right, 1)
+    
+    # Draw the net surface onto the main surface
+    surface.blit(net_surf, (0, 0))
 def draw_scoreboard(surface, p1_score, p2_score, p1_games, p2_games, score_font, name_font, game_score_font, is_goal_active):
     name_text = "Nils vs. Harry"; score_text = f"{p1_score} - {p2_score}"; game_score_text = f"({p1_games}-{p2_games})"
     score_text_color = SCOREBOARD_TEXT_FLASH_COLOR if is_goal_active else TEXT_COLOR
@@ -522,21 +661,16 @@ class WeatherParticle:
             self.lifespan = None  # Will reset when off-screen
             
         elif self.weather_type == "WINDY":
-            # Leaf/debris particles
-            self.x = random.randint(-50, self.screen_width + 50)
-            self.y = random.randint(0, self.screen_height - 100)
-            self.size = random.randint(2, 5)
-            self.speed = random.uniform(100, 200) * (-WEATHER_WIND_DIRECTION)  # Invert wind direction for particles
-            self.vertical_speed = random.uniform(-20, 20)
-            self.color = random.choice([
-                (139, 69, 19, 200),  # Brown
-                (34, 139, 34, 200),   # Green
-                (255, 140, 0, 200),   # Orange
-                (255, 215, 0, 200)    # Yellow
-            ])
+            self.size = random.uniform(2.0, 4.0)
+            self.color = (200, 200, 255, random.randint(100, 180))
+            self.x = random.randint(0, self.screen_width)
+            self.y = random.randint(0, self.screen_height * 0.9)
+            # Ändra från negativ till positiv riktning så att partiklarna följer samma riktning som spelarpåverkan
+            self.speed = random.uniform(100, 200) * WEATHER_WIND_DIRECTION  # Följ wind direction utan inversion
             self.lifespan = None  # Will reset when off-screen
             self.angle = 0
             self.rotation_speed = random.uniform(-5, 5)
+            self.vertical_speed = random.uniform(-20, 20)  # Lägg till vertikal hastighet
             
         elif self.weather_type == "SNOWY":
             # Snowflakes
@@ -1221,6 +1355,8 @@ class Ball:
         self.x = x; self.y = y; self.radius = radius; self.vx = 0; self.vy = 0;
         self.last_hit_by = None; self.rotation_angle = 0
         self.is_frozen = False; self.freeze_effect_timer = 0.0
+        self.on_left_crossbar = False  # Håller reda på om bollen redan är på vänster ribba
+        self.on_right_crossbar = False  # Håller reda på om bollen redan är på höger ribba
     def apply_force(self, force_x, force_y, hitter='player'):
         if self.is_frozen: return
         self.vx += force_x; self.vy += force_y; self.last_hit_by = hitter
@@ -1254,13 +1390,132 @@ class Ball:
         hit_ground = False
         hit_wall_this_frame = False
         hit_shield_this_frame = False
+        hit_crossbar_this_frame = False
         
-        # REMOVED DUPLICATE PHYSICS CALCULATION HERE
-        
+        # Get current goal dimensions accounting for enlargement
         current_goal_height_p1 = GOAL_HEIGHT + (POWERUP_GOAL_ENLARGER_HEIGHT_INCREASE if p1_goal_enlarged_timer > 0 else 0)
         current_goal_y_p1 = GOAL_Y_POS - (POWERUP_GOAL_ENLARGER_HEIGHT_INCREASE if p1_goal_enlarged_timer > 0 else 0)
         current_goal_height_p2 = GOAL_HEIGHT + (POWERUP_GOAL_ENLARGER_HEIGHT_INCREASE if p2_goal_enlarged_timer > 0 else 0)
         current_goal_y_p2 = GOAL_Y_POS - (POWERUP_GOAL_ENLARGER_HEIGHT_INCREASE if p2_goal_enlarged_timer > 0 else 0)
+        
+        # Crossbar collision - left goal
+        left_goal_width = abs(GOAL_DEPTH_X) * 2.0  # Match the width used in draw_goal_isometric
+        left_crossbar_y = current_goal_y_p1
+        left_crossbar_height = 8  # Match the height from draw_goal_isometric
+        
+        # Spara det tidigare tillståndet
+        was_on_left_crossbar = self.on_left_crossbar
+        self.on_left_crossbar = False
+        
+        # Check if ball is in horizontal range of the crossbar
+        if (self.x - self.radius <= GOAL_LINE_X_LEFT + left_goal_width/2 and 
+            self.x + self.radius >= GOAL_LINE_X_LEFT - left_goal_width/2):
+            
+            # Check if ball is in vertical range of the crossbar
+            crossbar_top = left_crossbar_y - left_crossbar_height/2
+            crossbar_bottom = left_crossbar_y + left_crossbar_height/2
+            
+            if (self.y + self.radius >= crossbar_top and
+                self.y - self.radius <= crossbar_bottom):
+                
+                # Markera att bollen nu är på ribban
+                self.on_left_crossbar = True
+                
+                # Calculate the hit position relative to the center of the crossbar
+                hit_offset = (self.y - left_crossbar_y) / (left_crossbar_height/2)
+                hit_offset = max(-1.0, min(1.0, hit_offset))  # Clamp to [-1, 1]
+                
+                # Determine if approaching from top or bottom
+                from_top = self.vy > 0
+                
+                # Bara korrigera positionen om bollen kommer tillräckligt snabbt
+                if abs(self.vy) > 0.5 or not was_on_left_crossbar:
+                    if from_top:
+                        # Hit from top - push up
+                        self.y = crossbar_top - self.radius
+                        
+                        # Angle the bounce based on hit position (center vs edge)
+                        bounce_angle = hit_offset * 0.3  # Up to 0.3 radians (about 17 degrees)
+                        bounce_vx = self.vx + (self.vy * bounce_angle * 0.5)
+                        self.vy *= -BALL_BOUNCE * 0.9
+                        self.vx = bounce_vx
+                    else:
+                        # Hit from bottom - push down
+                        self.y = crossbar_bottom + self.radius
+                        
+                        # Angle the bounce based on hit position (center vs edge)
+                        bounce_angle = hit_offset * 0.3  # Up to 0.3 radians (about 17 degrees)
+                        bounce_vx = self.vx - (self.vy * bounce_angle * 0.5)
+                        self.vy *= -BALL_BOUNCE * 0.9
+                        self.vx = bounce_vx
+                    
+                    # Sätt bara hit_crossbar_this_frame när det är en verklig kollision
+                    if abs(self.vy) > 0.5:
+                        hit_crossbar_this_frame = True
+        
+        # Crossbar collision - right goal
+        right_goal_width = abs(GOAL_DEPTH_X) * 2.0  # Match the width used in draw_goal_isometric
+        right_crossbar_y = current_goal_y_p2
+        right_crossbar_height = 8  # Match the height from draw_goal_isometric
+        
+        # Spara det tidigare tillståndet
+        was_on_right_crossbar = self.on_right_crossbar
+        self.on_right_crossbar = False
+        
+        # Check if ball is in horizontal range of the crossbar
+        if (self.x - self.radius <= GOAL_LINE_X_RIGHT + right_goal_width/2 and 
+            self.x + self.radius >= GOAL_LINE_X_RIGHT - right_goal_width/2):
+            
+            # Check if ball is in vertical range of the crossbar
+            crossbar_top = right_crossbar_y - right_crossbar_height/2
+            crossbar_bottom = right_crossbar_y + right_crossbar_height/2
+            
+            if (self.y + self.radius >= crossbar_top and
+                self.y - self.radius <= crossbar_bottom):
+                
+                # Markera att bollen nu är på ribban
+                self.on_right_crossbar = True
+                
+                # Calculate the hit position relative to the center of the crossbar
+                hit_offset = (self.y - right_crossbar_y) / (right_crossbar_height/2)
+                hit_offset = max(-1.0, min(1.0, hit_offset))  # Clamp to [-1, 1]
+                
+                # Determine if approaching from top or bottom
+                from_top = self.vy > 0
+                
+                # Bara korrigera positionen om bollen kommer tillräckligt snabbt
+                if abs(self.vy) > 0.5 or not was_on_right_crossbar:
+                    if from_top:
+                        # Hit from top - push up
+                        self.y = crossbar_top - self.radius
+                        
+                        # Angle the bounce based on hit position (center vs edge)
+                        bounce_angle = hit_offset * 0.3  # Up to 0.3 radians (about 17 degrees)
+                        bounce_vx = self.vx + (self.vy * bounce_angle * 0.5)
+                        self.vy *= -BALL_BOUNCE * 0.9
+                        self.vx = bounce_vx
+                    else:
+                        # Hit from bottom - push down
+                        self.y = crossbar_bottom + self.radius
+                        
+                        # Angle the bounce based on hit position (center vs edge)
+                        bounce_angle = hit_offset * 0.3  # Up to 0.3 radians (about 17 degrees)
+                        bounce_vx = self.vx - (self.vy * bounce_angle * 0.5)
+                        self.vy *= -BALL_BOUNCE * 0.9
+                        self.vx = bounce_vx
+                    
+                    # Sätt bara hit_crossbar_this_frame när det är en verklig kollision
+                    if abs(self.vy) > 0.5:
+                        hit_crossbar_this_frame = True
+        
+        # Play sound if crossbar was hit (och endast om bollen inte var på ribban i förra framen)
+        if hit_crossbar_this_frame and ((self.on_left_crossbar and not was_on_left_crossbar) or 
+                                       (self.on_right_crossbar and not was_on_right_crossbar)):
+            # Spela ljudet endast om hastigheten är tillräckligt hög
+            if abs(self.vy) > 3.0:  # Minsta hastighet för att generera ljud
+                play_sound(loaded_sounds['crossbar_hit'])
+        
+        # Shield collision
         if p1_shield_active:
             shield_rect = pygame.Rect(0, current_goal_y_p1, POWERUP_GOAL_SHIELD_WIDTH, current_goal_height_p1)
             if self.x - self.radius < shield_rect.right and self.x + self.radius > shield_rect.left and \
@@ -1271,10 +1526,20 @@ class Ball:
             if self.x + self.radius > shield_rect.left and self.x - self.radius < shield_rect.right and \
                self.y + self.radius > shield_rect.top and self.y - self.radius < shield_rect.bottom:
                 if self.vx > 0: self.x = shield_rect.left - self.radius; self.vx *= -BALL_BOUNCE; hit_shield_this_frame = True
-        if hit_shield_this_frame: play_sound(loaded_sounds['wall_hit'])
+        
+        # Spela shield-ljudet bara om vi verkligen har en kollision och hastigheten är tillräckligt stor
+        if hit_shield_this_frame and abs(self.vx) > 1.0: 
+            play_sound(loaded_sounds['wall_hit'])
+        
+        # Wall collision  
         if self.x + self.radius >= SCREEN_WIDTH: self.x = SCREEN_WIDTH - self.radius; self.vx *= -BALL_BOUNCE * 0.8; hit_wall_this_frame = True
         elif self.x - self.radius <= 0: self.x = self.radius; self.vx *= -BALL_BOUNCE * 0.8; hit_wall_this_frame = True
-        if hit_wall_this_frame and not hit_shield_this_frame: play_sound(loaded_sounds['wall_hit'])
+        
+        # Spela wall-ljudet bara om vi har en kollision med väggen (inte med shield) och hastigheten är tillräckligt stor
+        if hit_wall_this_frame and not hit_shield_this_frame and abs(self.vx) > 1.0:
+            play_sound(loaded_sounds['wall_hit'])
+            
+        # Ground collision
         if self.y + self.radius >= GROUND_Y:
             if self.vy >= 0:
                 impact_vy = abs(self.vy); self.y = GROUND_Y - self.radius; self.vy *= -BALL_BOUNCE; self.vx *= 0.9
@@ -1330,6 +1595,7 @@ def load_sounds(sound_dir="sounds"):
         "harry_ahead": ["harry_ahead.wav"],
         "super_jackpot": ["super_jackpot.wav"],
         "sword_hit": ["sword_hit.wav"], # Sound for sword hitting objects
+        "crossbar_hit": ["crossbar_hit.wav"], # Sound for ball hitting the crossbar
         # Weather announcement sounds
         # "weather_sunny": ["sunny.wav"],
         # "weather_rainy": ["rainy.wav"],
@@ -1358,7 +1624,7 @@ def load_sounds(sound_dir="sounds"):
                 except pygame.error as e: print(f"Warning: Could not load sound '{path}': {e}"); break
             else: break
         if not sounds[goal_key]: print(f"Warning: No goal sounds found for Player {player_num}")
-    required_keys = ["goal_p1", "goal_p2", "kick", "jump", "land", "wall_hit", "player_bump", "headbutt", "body_hit", "combo", "ball_bounce", "nils_wins", "harry_wins", "nils_ahead", "harry_ahead", "super_jackpot", # Add weather keys
+    required_keys = ["goal_p1", "goal_p2", "kick", "jump", "land", "wall_hit", "player_bump", "headbutt", "body_hit", "combo", "ball_bounce", "nils_wins", "harry_wins", "nils_ahead", "harry_ahead", "super_jackpot", "crossbar_hit", # Add weather keys
                      "weather_sunny", "weather_rainy", "weather_windy", "weather_snowy", "weather_foggy", "weather_gothenburg"]
     for key in required_keys:
         if key not in sounds: sounds[key] = []
@@ -1375,11 +1641,38 @@ def load_sounds(sound_dir="sounds"):
 
     return sounds
 # --- Sound Playing Helpers ---
-def play_sound(sound_list): # ... (no change) ...
-    if sound_list:
-        sound_to_play = random.choice(sound_list)
-        ch = pygame.mixer.find_channel(True)
-        if ch: ch.play(sound_to_play)
+def play_sound(sound_list): # Modifierad för att implementera ljudsäkerhet
+    global sound_last_played
+    if not sound_list:
+        return
+    
+    # Skapa en dictionary för att lagra senaste tidpunkt för ljuduppspelning om den inte redan finns
+    if 'sound_last_played' not in globals():
+        global sound_last_played
+        sound_last_played = {}
+    
+    # Hämta aktuell tid
+    current_time = time.time()
+    
+    # Skapa nyckeln baserat på ID för första ljudet i listan (alla ljud i en grupp hanteras tillsammans)
+    sound_key = id(sound_list[0]) if sound_list else None
+    
+    # Kontrollera om ljudet nyligen har spelats
+    if sound_key in sound_last_played:
+        # Standard cooldown på 0.15 sekunder för alla ljud
+        cooldown = 0.15
+        
+        time_since_last_played = current_time - sound_last_played[sound_key]
+        if time_since_last_played < cooldown:
+            # För tidigt att spela ljudet igen
+            return
+    
+    # Spela ljudet och uppdatera tidsstämpel
+    sound_to_play = random.choice(sound_list)
+    ch = pygame.mixer.find_channel(True)
+    if ch: 
+        ch.play(sound_to_play)
+        sound_last_played[sound_key] = current_time
 def queue_sound(sound_list): # ... (no change) ...
     global announcement_queue
     if sound_list:
@@ -1411,10 +1704,12 @@ winner_images = {}
 try:
     winner_images[1] = pygame.image.load("images/nils_wins.png").convert_alpha()
     winner_images[2] = pygame.image.load("images/harry_wins.png").convert_alpha()
+    winner_images["harry_eats"] = pygame.image.load("images/harry_eats.png").convert_alpha()
     print("Loaded winner images.")
 except pygame.error as e:
     print(f"Warning: Could not load winner images: {e}")
     winner_images[1] = None; winner_images[2] = None
+    winner_images["harry_eats"] = None
 
 # --- Score & State Variables ---
 player1_score = 0; player2_score = 0; p1_games_won = 0; p2_games_won = 0
@@ -1891,14 +2186,41 @@ while running:
         screen.fill(bg_color); pygame.draw.rect(screen, GRASS_GREEN, (0, GROUND_Y, SCREEN_WIDTH, SCREEN_HEIGHT - GROUND_Y))
         winner_name = "Nils" if overall_winner == 1 else "Harry";
         draw_trophy(screen, winner_name, font_goal, font_large)
-        winner_image = winner_images.get(overall_winner)
-        if winner_image:
-            image_rect = winner_image.get_rect(); trophy_center_x = SCREEN_WIDTH // 2; base_width = 140; padding = 50
+        
+        # Draw the trophy at the center
+        trophy_center_x = SCREEN_WIDTH // 2
+        trophy_base_y = SCREEN_HEIGHT // 2 + 180
+        
+        # Display Harry's images if Harry wins
+        if overall_winner == 2:
+            # First, draw harry_eats.png on the left
+            if winner_images.get("harry_eats"):
+                harry_eats_image = winner_images["harry_eats"]
+                eats_rect = harry_eats_image.get_rect()
+                eats_center_y = SCREEN_HEIGHT // 2 + 180 - 40 - 100 // 2
+                eats_rect.center = (trophy_center_x - 300, eats_center_y)  # 300 pixels to the left of trophy
+                screen.blit(harry_eats_image, eats_rect)
+                
+            # Then, draw harry_wins.png on the right
+            if winner_images.get(overall_winner):
+                winner_image = winner_images[overall_winner]
+                image_rect = winner_image.get_rect()
+                image_center_y = SCREEN_HEIGHT // 2 + 180 - 40 - 100 // 2
+                image_rect.center = (trophy_center_x + 300, image_center_y)  # 300 pixels to the right of trophy
+                image_rect.right = min(image_rect.right, SCREEN_WIDTH - 10)
+                screen.blit(winner_image, image_rect)
+        # Display Nils' image if Nils wins
+        elif overall_winner == 1 and winner_images.get(overall_winner):
+            winner_image = winner_images[overall_winner]
+            image_rect = winner_image.get_rect()
+            base_width = 140
+            padding = 50
             image_center_x = trophy_center_x + base_width // 2 + image_rect.width // 2 + padding
             image_center_y = SCREEN_HEIGHT // 2 + 180 - 40 - 100 // 2
             image_rect.center = (image_center_x, image_center_y)
             image_rect.right = min(image_rect.right, SCREEN_WIDTH - 10)
             screen.blit(winner_image, image_rect)
+            
         draw_game_scores(screen, game_scores, font_small); pygame.display.flip(); continue
 
     # --- Handle Match Over State ---
@@ -1992,8 +2314,8 @@ while running:
                 # Recreate wind particles with new direction/speed potentially
                 # (Optional: Could make existing particles change direction too)
                 for i, p in enumerate(weather_particles):
-                   if p.weather_type == "WINDY":
-                       p.speed = random.uniform(100, 200) * (-WEATHER_WIND_DIRECTION)
+                    if p.weather_type == "WINDY":
+                        p.speed = random.uniform(100, 200) * WEATHER_WIND_DIRECTION  # Ta bort negativa tecknet här också
 
         # --- Power-up Collection ---
         collected_powerups_indices = [] # ... (unchanged logic including BALL_FREEZE trigger) ...

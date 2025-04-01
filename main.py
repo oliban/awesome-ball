@@ -999,7 +999,7 @@ class StickMan: # Updated powerup dict/handling
             else: self.rotation_angle += self.rotation_velocity * dt; self.rotation_velocity *= (PLAYER_TUMBLE_DAMPING ** (dt * 60))
         expired_powerups = []
         for p_type, value in list(self.active_powerups.items()):
-            if p_type in ["FLIGHT", "BIG_PLAYER", "SHRUNK", "SUPER_JUMP", "SPEED_BOOST", "LOW_GRAVITY", "REVERSE_CONTROLS", "REFLECT_SHIELD", "ENORMOUS_HEAD"]:
+            if p_type in ["FLIGHT", "BIG_PLAYER", "SHRUNK", "SUPER_JUMP", "SPEED_BOOST", "LOW_GRAVITY", "REVERSE_CONTROLS", "REFLECT_SHIELD", "ENORMOUS_HEAD", "SWORD"]:
                 new_timer = value - dt
                 if new_timer <= 0:
                     expired_powerups.append(p_type)
@@ -1012,6 +1012,7 @@ class StickMan: # Updated powerup dict/handling
                     elif p_type == "REVERSE_CONTROLS": self.is_controls_reversed = False; print("Controls Restored")
                     elif p_type == "REFLECT_SHIELD": print("Reflect Shield ended")
                     elif p_type == "ENORMOUS_HEAD": self.is_enormous_head = False; self.calculate_current_sizes(); print("Enormous Head ended")
+                    elif p_type == "SWORD": self.is_sword = False; print("Sword Mode ended")
                 else:
                     self.active_powerups[p_type] = new_timer
         for p_type in expired_powerups:
@@ -2822,18 +2823,18 @@ while running:
         powerup_colors = { "FLIGHT": (0,100,200), "ROCKET_LAUNCHER": (200, 50, 50), "BIG_PLAYER": (50, 180, 50),
                            "SUPER_JUMP": (200, 200, 50), "SPEED_BOOST": (255, 150, 0), "GOAL_SHIELD": (100, 180, 255),
                            "SHRUNK": (150, 100, 200), "LOW_GRAVITY": (180, 180, 255), "REVERSE_CONTROLS": (255, 100, 100),
-                           "ENORMOUS_HEAD": (255, 100, 200), "GOAL_ENLARGER": (50, 200, 150)}
+                           "ENORMOUS_HEAD": (255, 100, 200), "GOAL_ENLARGER": (50, 200, 150), "SWORD": (192, 192, 192)}
         powerup_texts = { "FLIGHT": "Flight: {:.1f}", "ROCKET_LAUNCHER": "ROCKET(x{})", "BIG_PLAYER": "BIG: {:.1f}",
                           "SUPER_JUMP": "JUMP: {:.1f}", "SPEED_BOOST": "SPEED: {:.1f}", "GOAL_SHIELD": "SHIELD: {:.1f}",
                           "SHRUNK": "Shrunk: {:.1f}", "LOW_GRAVITY": "LOW-G: {:.1f}", "REVERSE_CONTROLS": "REVERSED: {:.1f}",
-                          "ENORMOUS_HEAD": "BIG HEAD: {:.1f}", "GOAL_ENLARGER": "GOAL+: {:.1f}"}
+                          "ENORMOUS_HEAD": "BIG HEAD: {:.1f}", "GOAL_ENLARGER": "GOAL+: {:.1f}", "SWORD": "SWORD: {:.1f}"}
 
         # Player 1 UI
         p1_ui_y = SCREEN_HEIGHT - 30
         for p_type in sorted(player1.active_powerups.keys()):
             val = player1.active_powerups[p_type]; text_template = powerup_texts.get(p_type, p_type); text = ""
             if p_type == "ROCKET_LAUNCHER": text = text_template.format(val)
-            elif p_type in ["FLIGHT", "BIG_PLAYER", "SHRUNK", "SUPER_JUMP", "SPEED_BOOST", "LOW_GRAVITY", "REVERSE_CONTROLS", "ENORMOUS_HEAD"]: text = text_template.format(val)
+            elif p_type in ["FLIGHT", "BIG_PLAYER", "SHRUNK", "SUPER_JUMP", "SPEED_BOOST", "LOW_GRAVITY", "REVERSE_CONTROLS", "ENORMOUS_HEAD", "SWORD"]: text = text_template.format(val)
             else: text = text_template
             color = powerup_colors.get(p_type, WHITE); surf = powerup_font.render(text, True, color); rect = surf.get_rect(bottomleft=(10, p1_ui_y)); screen.blit(surf, rect)
             p1_ui_y -= line_height
@@ -2851,7 +2852,7 @@ while running:
         for p_type in sorted(player2.active_powerups.keys()):
             val = player2.active_powerups[p_type]; text_template = powerup_texts.get(p_type, p_type); text = ""
             if p_type == "ROCKET_LAUNCHER": text = text_template.format(val)
-            elif p_type in ["FLIGHT", "BIG_PLAYER", "SHRUNK", "SUPER_JUMP", "SPEED_BOOST", "LOW_GRAVITY", "REVERSE_CONTROLS", "ENORMOUS_HEAD"]: text = text_template.format(val)
+            elif p_type in ["FLIGHT", "BIG_PLAYER", "SHRUNK", "SUPER_JUMP", "SPEED_BOOST", "LOW_GRAVITY", "REVERSE_CONTROLS", "ENORMOUS_HEAD", "SWORD"]: text = text_template.format(val)
             else: text = text_template
             color = powerup_colors.get(p_type, WHITE); surf = powerup_font.render(text, True, color); rect = surf.get_rect(bottomright=(SCREEN_WIDTH - 10, p2_ui_y)); screen.blit(surf, rect)
             p2_ui_y -= line_height

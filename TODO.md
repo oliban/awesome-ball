@@ -2,4 +2,4 @@
 - [X] The angle of the sword should be mirrored if comparing when facing left and when facing right
 - [X] low gravity power-up doesn't affect the gravity
 - [X] inactivate the enlarged head power-up but leave the code for it if we choose to activate it later
-- [ ] The player that is hit by a rocket should be stunned for 5 seconds. The time adds up if hit by another rocket before time runs out. 
+- [X] The player that is hit by a rocket should be stunned for 5 seconds. The time adds up if hit by another rocket before time runs out. 

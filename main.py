@@ -31,6 +31,16 @@ SCREEN_FLASH_COLOR = (255, 255, 255, 100)
 SCREEN_FLASH_DURATION = 0.15
 DEBUG_KICK_ANGLES = False
 
+# --- Pastel Colors for Powerups ---
+PASTEL_COLORS = [
+    (255, 179, 186), # Light Pink
+    (255, 223, 186), # Light Orange (Peach)
+    (255, 255, 186), # Light Yellow
+    (186, 255, 201), # Light Green (Mint)
+    (186, 225, 255), # Light Blue
+    (204, 186, 255), # Light Purple (Lavender)
+    (255, 204, 229), # Light Pink/Purple
+]
 
 # Physics
 GRAVITY = 0.5; BASE_PLAYER_SPEED = 4; BASE_JUMP_POWER = -11
@@ -504,10 +514,12 @@ class ParachutePowerup: # ... (no change) ...
         self.width, self.height = POWERUP_BOX_SIZE; self.active = False
         self.chute_radius = 35; self.powerup_type = None
         self.id = random.randint(1, 1000000)
+        self.box_color = POWERUP_BOX_COLOR # Default color
     def spawn(self):
         self.active = True; self.powerup_type = random.choice(POWERUP_TYPES)
         self.x = random.randint(GOAL_MARGIN_X + 50, SCREEN_WIDTH - GOAL_MARGIN_X - 50); self.y = -self.chute_radius * 2
         self.vx = random.uniform(-POWERUP_DRIFT_SPEED, POWERUP_DRIFT_SPEED); print(f"Powerup spawned: {self.powerup_type} at ({self.x:.0f}, {self.y:.0f})")
+        self.box_color = random.choice(PASTEL_COLORS) # Assign random pastel color
     def update(self, dt):
         if not self.active: return False
         self.y += self.vy * dt; self.x += self.vx * dt
@@ -527,7 +539,22 @@ class ParachutePowerup: # ... (no change) ...
         return None
     def draw(self, screen):
         if not self.active: return
-        box_rect = self.get_box_rect(); pygame.draw.rect(screen, POWERUP_BOX_COLOR, box_rect); pygame.draw.rect(screen, BLACK, box_rect, 1)
+        
+        # Debug print for box color
+        print(f"Drawing powerup {self.id} type {self.powerup_type} with color: {self.box_color}")
+        
+        box_rect = self.get_box_rect(); pygame.draw.rect(screen, self.box_color, box_rect); pygame.draw.rect(screen, BLACK, box_rect, 1) # Use self.box_color
+        
+        # Draw Ribbon
+        ribbon_color = WHITE
+        ribbon_width = 4 # Width of the ribbon lines
+        # Vertical ribbon line
+        pygame.draw.line(screen, ribbon_color, (box_rect.centerx, box_rect.top), (box_rect.centerx, box_rect.bottom), ribbon_width)
+        # Horizontal ribbon line
+        pygame.draw.line(screen, ribbon_color, (box_rect.left, box_rect.centery), (box_rect.right, box_rect.centery), ribbon_width)
+        # Simple "bow" dot in the center
+        pygame.draw.circle(screen, ribbon_color, box_rect.center, ribbon_width + 1)
+
         chute_center_x = int(self.x); chute_top_y = int(self.y - self.chute_radius)
         chute_rect = pygame.Rect(0, 0, self.chute_radius * 2, self.chute_radius * 1.5); chute_rect.center = (chute_center_x, chute_top_y)
         num_panels = 6; angle_step = math.pi / num_panels
@@ -1886,8 +1913,8 @@ def play_sound(sound_list): # Modifierad för att implementera ljudsäkerhet
             return
     
     # Spela ljudet och uppdatera tidsstämpel
-    sound_to_play = random.choice(sound_list)
-    ch = pygame.mixer.find_channel(True)
+        sound_to_play = random.choice(sound_list)
+        ch = pygame.mixer.find_channel(True)
     if ch: 
         ch.play(sound_to_play)
         sound_last_played[sound_key] = current_time

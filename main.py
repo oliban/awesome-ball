@@ -526,7 +526,7 @@ class WeatherParticle:
             self.x = random.randint(-50, self.screen_width + 50)
             self.y = random.randint(0, self.screen_height - 100)
             self.size = random.randint(2, 5)
-            self.speed = random.uniform(100, 200) * WEATHER_WIND_DIRECTION
+            self.speed = random.uniform(100, 200) * (-WEATHER_WIND_DIRECTION)  # Invert wind direction for particles
             self.vertical_speed = random.uniform(-20, 20)
             self.color = random.choice([
                 (139, 69, 19, 200),  # Brown
@@ -607,8 +607,8 @@ class WeatherParticle:
                 self.vertical_speed = random.uniform(-20, 20)
                 
             # If off-screen, reset
-            if ((WEATHER_WIND_DIRECTION > 0 and self.x > self.screen_width + 50) or
-                (WEATHER_WIND_DIRECTION < 0 and self.x < -50) or
+            if ((WEATHER_WIND_DIRECTION < 0 and self.x > self.screen_width + 50) or
+                (WEATHER_WIND_DIRECTION > 0 and self.x < -50) or
                 self.y < -50 or self.y > self.screen_height + 50):
                 self.reset()
                 
@@ -668,6 +668,12 @@ class WeatherParticle:
             rotated = pygame.transform.rotate(rect_surf, self.angle * 57.3)  # Convert to degrees
             screen.blit(rotated, (int(self.x - rotated.get_width() // 2),
                                 int(self.y - rotated.get_height() // 2)))
+                                
+        elif self.weather_type == "SNOWY":
+            # Draw snowflake as a small circle
+            surf = pygame.Surface((self.size * 2, self.size * 2), pygame.SRCALPHA)
+            pygame.draw.circle(surf, self.color, (self.size, self.size), self.size)
+            screen.blit(surf, (int(self.x - self.size), int(self.y - self.size)))
 
 class StickMan: # Updated powerup dict/handling
     # Add team_color and team_accent to the arguments, with defaults
@@ -876,7 +882,7 @@ class StickMan: # Updated powerup dict/handling
         # Apply wind force to player
         if current_weather == "WINDY":
             # Use the currently randomized wind force and direction
-            self.vx += (CURRENT_WIND_FORCE * WEATHER_WIND_DIRECTION * 0.02 * dt) # Apply wind force to vx (Increased multiplier from 0.01)
+            self.vx += (CURRENT_WIND_FORCE * WEATHER_WIND_DIRECTION * 0.03 * dt) # Apply wind force to vx (Increased multiplier from 0.01)
         elif current_weather == "GOTHENBURG_WEATHER":
             # Apply Gothenburg specific wind
              wind_force = weather_effect.get("wind_force", 0.0)
@@ -1235,7 +1241,7 @@ class Ball:
         # Apply wind force if in windy weather
         if current_weather == "WINDY":
             wind_force = weather_effect.get("wind_force", 0.0)
-            self.vx += (wind_force * WEATHER_WIND_DIRECTION * 0.01 * dt)
+            self.vx += (wind_force * WEATHER_WIND_DIRECTION * 0.03 * dt)
         
         # Update physics with weather-modified values
         self.rotation_angle += self.vx * 0.015
@@ -1985,9 +1991,9 @@ while running:
                 
                 # Recreate wind particles with new direction/speed potentially
                 # (Optional: Could make existing particles change direction too)
-                # for i, p in enumerate(weather_particles):
-                #    if p.weather_type == "WINDY":
-                #        p.speed = random.uniform(100, 200) * WEATHER_WIND_DIRECTION
+                for i, p in enumerate(weather_particles):
+                   if p.weather_type == "WINDY":
+                       p.speed = random.uniform(100, 200) * (-WEATHER_WIND_DIRECTION)
 
         # --- Power-up Collection ---
         collected_powerups_indices = [] # ... (unchanged logic including BALL_FREEZE trigger) ...
@@ -2292,7 +2298,8 @@ while running:
         weather_message_timer -= dt # << MOVED HERE
 
     if goal_message_timer > 0 and match_active:
-        goal_text_surf = font_goal.render("GOAL!", True, ITALY_RED); goal_text_rect = goal_text_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3)); bg_rect = goal_text_rect.inflate(20, 10); bg_surf = pygame.Surface(bg_rect.size, pygame.SRCALPHA); bg_surf.fill((WHITE[0], WHITE[1], WHITE[2], 180)); screen.blit(bg_surf, bg_rect.topleft); screen.blit(goal_text_surf, goal_text_rect)
+        # Removed GOAL text display
+        pass
     # --- Modified Match Over Drawing with Transition ---
     if match_over_timer > 0 and not game_over:
         # Calculate transition progress (0.0 to 1.0) as timer counts down

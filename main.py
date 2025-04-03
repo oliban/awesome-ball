@@ -1,12 +1,15 @@
 # stickkick_powerup.py
 # -*- coding: utf-8 -*-
-import pygame
+# Standard library imports first
 import sys
 import math
 import random
 import os
 import time
 from datetime import datetime
+
+# Third-party imports next
+import pygame
 
 # --- Get Timestamp ---
 GENERATION_TIMESTAMP = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -126,6 +129,13 @@ WEATHER_PARTICLE_COUNT = {
 WEATHER_WIND_DIRECTION = 1  # 1 = right, -1 = left (for WINDY weather)
 WEATHER_WIND_CHANGE_TIMER = 0  # Timer for wind direction changes
 CURRENT_WIND_FORCE = 0 # Current randomized wind force for WINDY weather
+
+# --- Weather Performance Tuning --- (Added)
+WEATHER_PARTICLE_SPAWN_INTERVAL = 0.05 # Time between spawning batches
+WEATHER_PARTICLE_BATCH_SIZE = 5      # Particles per batch
+FPS_LOW_THRESHOLD = 30               # FPS below this is considered low
+FPS_LOW_DURATION_THRESHOLD = 2.0     # How long FPS must be low to trigger fallback (seconds)
+WEATHER_STABILIZATION_TIME = 1.0     # Time after weather change before starting FPS check (seconds)
 
 # --- Weather Messages --- (Added)
 WEATHER_MESSAGES = {
@@ -500,7 +510,7 @@ class Particle: # ... (no change) ...
         self.lifespan -= dt;
         if self.start_life > 0: life_ratio = max(0, self.lifespan / self.start_life); current_size_base = SMOKE_PARTICLE_SIZE if self.p_type == 'smoke' else PARTICLE_SIZE; self.size = current_size_base * life_ratio
         else: self.size = 0
-        return self.lifespan > 0 and self.size > 0.5
+        return self.lifespan > 0 and self.size > 0
     def draw(self, screen):
         if self.size > 0:
             if self.p_type == 'smoke':
@@ -1992,6 +2002,11 @@ weather_message_timer = 0.0
 current_weather = random.choice(WEATHER_TYPES)
 weather_particles = []
 weather_wind_change_timer = 15.0  # Time until wind direction changes
+weather_particles_to_spawn = [] # Queue for spawning particles gradually (Added)
+weather_particle_spawn_timer = 0.0 # Timer for spawning batches (Added)
+low_fps_timer = 0.0 # Timer for tracking low FPS duration (Added)
+weather_particles_disabled_for_current_match = False # Flag to disable particles if FPS is too low (Added)
+weather_change_timer = 0.0 # Timer since last weather change (Added)
 
 
 # --- Reset/Start Functions ---
@@ -2007,6 +2022,8 @@ def reset_positions(): # Keeps powerups active, resets player state only
     active_rockets = []; active_explosions = []
 def start_new_match(): # Full reset for new match
     global player1_score, player2_score, match_active, match_winner, match_over_timer, match_end_sound_played, announcement_queue, powerup_spawn_timer, active_powerups, ball_freeze_timer, p1_shield_active, p1_shield_timer, p2_shield_active, p2_shield_timer, jackpot_triggered_this_match, p1_goal_enlarged_timer, p2_goal_enlarged_timer, current_weather, weather_particles, weather_wind_change_timer, CURRENT_WIND_FORCE, WEATHER_WIND_DIRECTION, current_time_of_day, weather_message_text, weather_message_timer # Added message variables
+    # Added weather performance variables to reset
+    global weather_particles_to_spawn, weather_particle_spawn_timer, low_fps_timer, weather_particles_disabled_for_current_match, weather_change_timer
     player1_score = 0; player2_score = 0; match_active = True; match_winner = None; match_over_timer = 0.0; match_end_sound_played = False
     announcement_queue = []; reset_positions()
     player1.active_powerups = {}; player1.is_flying = False; player1.is_big = False; player1.is_shrunk = False; player1.is_enormous_head = False; player1.jump_power = BASE_JUMP_POWER; player1.player_speed = BASE_PLAYER_SPEED; player1.calculate_current_sizes()
@@ -2030,6 +2047,11 @@ def start_new_match(): # Full reset for new match
     # Set up new weather conditions for this match
     current_weather = random.choice(WEATHER_TYPES)
     weather_particles = []
+    weather_particles_to_spawn = [] # Clear spawn queue (Added)
+    weather_particle_spawn_timer = 0.0 # Reset spawn timer (Added)
+    low_fps_timer = 0.0 # Reset low FPS timer (Added)
+    weather_particles_disabled_for_current_match = False # Re-enable particles for new match (Added)
+    weather_change_timer = 0.0 # Reset weather change timer (Added)
     weather_wind_change_timer = 15.0
     CURRENT_WIND_FORCE = 0 # Reset current wind force
     WEATHER_WIND_DIRECTION = random.choice([-1, 1]) # Random initial direction for WINDY
@@ -2044,11 +2066,10 @@ def start_new_match(): # Full reset for new match
     else:
          print(f"Starting {current_weather} match.")
          
-    # Create weather particles
-    for _ in range(WEATHER_PARTICLE_COUNT.get(current_weather, 0)):
-        weather_particles.append(WeatherParticle(current_weather, SCREEN_WIDTH, SCREEN_HEIGHT))
-    
-    print(f"Starting new match with {current_weather} weather.")
+     # Queue weather particles for spawning (MODIFIED)
+    total_particles_to_create = WEATHER_PARTICLE_COUNT.get(current_weather, 0)
+    weather_particles_to_spawn.extend([current_weather] * total_particles_to_create) # Add weather type strings to queue
+    print(f"Queued {total_particles_to_create} {current_weather} particles for spawning.")
 
     # Select and set weather message (Added)
     possible_messages = WEATHER_MESSAGES.get(current_weather, [f"{current_weather.replace('_', ' ').title()} weather."])
@@ -2360,12 +2381,24 @@ while running:
                     old_weather = current_weather
                     possible_weathers = [w for w in WEATHER_TYPES if w != old_weather]
                     current_weather = random.choice(possible_weathers)
-                    
-                    # Clear and recreate weather particles
+
+                    # Clear existing particles and queue new ones (MODIFIED)
                     weather_particles.clear()
-                    for _ in range(WEATHER_PARTICLE_COUNT.get(current_weather, 0)):
-                        weather_particles.append(WeatherParticle(current_weather, SCREEN_WIDTH, SCREEN_HEIGHT))
-                    
+                    weather_particles_to_spawn.clear() # Clear spawn queue
+                    weather_particle_spawn_timer = 0.0 # Reset spawn timer
+                    low_fps_timer = 0.0 # Reset low FPS timer
+                    weather_particles_disabled_for_current_match = False # Re-enable particles
+                    weather_change_timer = 0.0 # Reset weather change timer
+
+                    total_particles_to_create = WEATHER_PARTICLE_COUNT.get(current_weather, 0)
+                    weather_particles_to_spawn.extend([current_weather] * total_particles_to_create) # Add weather type strings to queue
+                    print(f"Queued {total_particles_to_create} {current_weather} particles for spawning.")
+
+                    # Clear and recreate weather particles << REMOVED OLD LOOP
+                    # weather_particles.clear()
+                    # for _ in range(WEATHER_PARTICLE_COUNT.get(current_weather, 0)):
+                    #     weather_particles.append(WeatherParticle(current_weather, SCREEN_WIDTH, SCREEN_HEIGHT))
+
                     # Reset wind change timer if it's windy
                     if current_weather == "WINDY":
                         weather_wind_change_timer = random.uniform(10.0, 20.0)
@@ -2540,10 +2573,41 @@ while running:
         active_explosions = [e for e in active_explosions if e.update(dt)]
         
         # --- Weather Updates ---
-        # Update weather particles
-        for p in weather_particles:
-            p.update(dt)
-            
+        weather_change_timer += dt # Increment weather change timer (Added)
+
+        # Staggered Particle Spawning (Added)
+        if not weather_particles_disabled_for_current_match and weather_particles_to_spawn:
+            weather_particle_spawn_timer -= dt
+            if weather_particle_spawn_timer <= 0:
+                spawn_count = 0
+                while weather_particles_to_spawn and spawn_count < WEATHER_PARTICLE_BATCH_SIZE:
+                    weather_type_to_spawn = weather_particles_to_spawn.pop(0)
+                    weather_particles.append(WeatherParticle(weather_type_to_spawn, SCREEN_WIDTH, SCREEN_HEIGHT))
+                    spawn_count += 1
+                # print(f"Spawned {spawn_count} weather particles. {len(weather_particles_to_spawn)} remaining.")
+                if weather_particles_to_spawn: # Only reset timer if more are waiting
+                     weather_particle_spawn_timer = WEATHER_PARTICLE_SPAWN_INTERVAL
+                else:
+                     print("Finished spawning weather particles.")
+
+
+        # Update weather particles (Only if not disabled)
+        if not weather_particles_disabled_for_current_match:
+            for p in weather_particles:
+                p.update(dt)
+
+        # FPS Monitoring and Fallback (Added)
+        current_fps = clock.get_fps()
+        if weather_change_timer > WEATHER_STABILIZATION_TIME and current_fps < FPS_LOW_THRESHOLD:
+            low_fps_timer += dt
+            if low_fps_timer > FPS_LOW_DURATION_THRESHOLD and not weather_particles_disabled_for_current_match:
+                print(f"WARN: FPS dropped below {FPS_LOW_THRESHOLD} for {FPS_LOW_DURATION_THRESHOLD}s. Disabling weather particles for this match.")
+                weather_particles_disabled_for_current_match = True
+                weather_particles.clear() # Remove existing particles
+                weather_particles_to_spawn.clear() # Cancel any pending spawns
+        else:
+            low_fps_timer = 0.0 # Reset low FPS timer if FPS is okay or still stabilizing
+
         if current_weather == "WINDY":
             weather_wind_change_timer -= dt
             if weather_wind_change_timer <= 0:
@@ -2812,8 +2876,13 @@ while running:
     for e in active_explosions: e.draw(screen)
     draw_offscreen_arrow(screen, ball, None)
 
+    # Draw weather particles (Only if not disabled) (MODIFIED)
+    if not weather_particles_disabled_for_current_match:
+        for p in weather_particles:
+            p.draw(screen)
+
     # Draw fog overlay AFTER game elements but BEFORE UI
-    if current_weather == "FOGGY":
+    if current_weather == "FOGGY" and not weather_particles_disabled_for_current_match: # Also check if disabled
         fog_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         fog_surf.fill((210, 210, 215, 130))  # Slightly grayish and much less transparent
         screen.blit(fog_surf, (0, 0))
@@ -2843,6 +2912,10 @@ while running:
     effects_str = ", ".join(effects_text) if effects_text else "Normal"
     weather_text = f"{weather_label} [{effects_str}]"
     
+    # Indicate if particles are disabled (Added)
+    if weather_particles_disabled_for_current_match:
+        weather_text += " [Particles Disabled]"
+        
     weather_color = {
         "SUNNY": (255, 200, 0),
         "RAINY": (100, 140, 255),
@@ -2991,11 +3064,22 @@ while running:
         if ball.is_frozen:
             freeze_text = "BALL FROZEN: {:.1f}".format(ball_freeze_timer); freeze_surf = powerup_font.render(freeze_text, True, (180, 220, 255)); freeze_rect = freeze_surf.get_rect(midbottom=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 10)); screen.blit(freeze_surf, freeze_rect)
 
+        # Draw FPS counter (Added)
+        fps_text = f"FPS: {clock.get_fps():.0f}"
+        fps_surf = font_small.render(fps_text, True, WHITE)
+        fps_rect = fps_surf.get_rect(bottomright=(SCREEN_WIDTH - 10, SCREEN_HEIGHT - 10))
+        # Add a small background for readability
+        fps_bg_rect = fps_rect.inflate(6, 4)
+        fps_bg_surf = pygame.Surface(fps_bg_rect.size, pygame.SRCALPHA)
+        fps_bg_surf.fill((0, 0, 0, 150))
+        screen.blit(fps_bg_surf, fps_bg_rect.topleft)
+        screen.blit(fps_surf, fps_rect)
+
         # Debug info
-    if debug_mode:
+        if debug_mode:
             pass  # Add any additional debug info here
 
-    pygame.display.flip()
+        pygame.display.flip()
 
 # Cleanup
 pygame.quit(); sys.exit()

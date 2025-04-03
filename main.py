@@ -1355,76 +1355,65 @@ class StickMan: # Updated powerup dict/handling
         
     def draw(self, screen):
         # Simplified drawing using basic pygame.draw functions for performance
+        # Uses joint positions calculated in update_limbs for correct animation/pose
 
-        # Use current calculated sizes
-        head_radius = int(self.head_radius)
-        torso_length = int(self.torso_length)
-        upper_arm_length = int(self.upper_arm_length)
-        forearm_length = int(self.forearm_length)
-        thigh_length = int(self.thigh_length)
-        shin_length = int(self.shin_length)
         limb_width = max(2, int(self.limb_width * 0.5)) # Make lines visible but thin
+        head_radius = int(self.head_radius)
 
-        # Basic positions
-        center_x = int(self.x)
-        base_y = int(self.y)
-        head_center_y = base_y - torso_length - head_radius
-        neck_y = base_y - torso_length
-        hip_y = base_y
+        # Use pre-calculated positions from update_limbs if available
+        head_pos = self.head_pos if hasattr(self, 'head_pos') and self.head_pos else (int(self.x), int(self.y) - int(self.torso_length) - head_radius) # Fallback
+        neck_pos = self.neck_pos if hasattr(self, 'neck_pos') and self.neck_pos else (head_pos[0], head_pos[1] + head_radius)
+        hip_pos = self.hip_pos if hasattr(self, 'hip_pos') and self.hip_pos else (neck_pos[0], neck_pos[1] + int(self.torso_length))
+        shoulder_pos = self.shoulder_pos if hasattr(self, 'shoulder_pos') and self.shoulder_pos else neck_pos
+        l_elbow_pos = self.l_elbow_pos if hasattr(self, 'l_elbow_pos') and self.l_elbow_pos else shoulder_pos
+        l_hand_pos = self.l_hand_pos if hasattr(self, 'l_hand_pos') and self.l_hand_pos else l_elbow_pos
+        r_elbow_pos = self.r_elbow_pos if hasattr(self, 'r_elbow_pos') and self.r_elbow_pos else shoulder_pos
+        r_hand_pos = self.r_hand_pos if hasattr(self, 'r_hand_pos') and self.r_hand_pos else r_elbow_pos
+        l_knee_pos = self.l_knee_pos if hasattr(self, 'l_knee_pos') and self.l_knee_pos else hip_pos
+        l_foot_pos = self.l_foot_pos if hasattr(self, 'l_foot_pos') and self.l_foot_pos else l_knee_pos
+        r_knee_pos = self.r_knee_pos if hasattr(self, 'r_knee_pos') and self.r_knee_pos else hip_pos
+        r_foot_pos = self.r_foot_pos if hasattr(self, 'r_foot_pos') and self.r_foot_pos else r_knee_pos
+
+        # Convert positions to integers for drawing
+        head_pos_int = (int(head_pos[0]), int(head_pos[1]))
+        neck_pos_int = (int(neck_pos[0]), int(neck_pos[1]))
+        hip_pos_int = (int(hip_pos[0]), int(hip_pos[1]))
+        shoulder_pos_int = (int(shoulder_pos[0]), int(shoulder_pos[1]))
+        l_elbow_pos_int = (int(l_elbow_pos[0]), int(l_elbow_pos[1]))
+        l_hand_pos_int = (int(l_hand_pos[0]), int(l_hand_pos[1]))
+        r_elbow_pos_int = (int(r_elbow_pos[0]), int(r_elbow_pos[1]))
+        r_hand_pos_int = (int(r_hand_pos[0]), int(r_hand_pos[1]))
+        l_knee_pos_int = (int(l_knee_pos[0]), int(l_knee_pos[1]))
+        l_foot_pos_int = (int(l_foot_pos[0]), int(l_foot_pos[1]))
+        r_knee_pos_int = (int(r_knee_pos[0]), int(r_knee_pos[1]))
+        r_foot_pos_int = (int(r_foot_pos[0]), int(r_foot_pos[1]))
 
         # Head
-        pygame.draw.circle(screen, self.team_color, (center_x, head_center_y), head_radius)
-        pygame.draw.circle(screen, self.team_accent, (center_x, head_center_y), head_radius, limb_width // 2) # Outline
+        pygame.draw.circle(screen, self.team_color, head_pos_int, head_radius)
+        pygame.draw.circle(screen, self.team_accent, head_pos_int, head_radius, limb_width // 2) # Outline
 
         # Torso
-        pygame.draw.line(screen, self.team_color, (center_x, neck_y), (center_x, hip_y), limb_width)
-
-        # --- Simple Limb Angles (Can be refined later if needed) ---
-        # Basic standing/walking pose
-        arm_angle_offset = math.sin(self.walk_cycle_timer) * 0.5 * self.facing_direction
-        leg_angle_offset = math.cos(self.walk_cycle_timer) * 0.6
+        pygame.draw.line(screen, self.team_color, neck_pos_int, hip_pos_int, limb_width)
 
         # Arms
-        shoulder_y = neck_y + int(torso_length * 0.1)
-        r_arm_angle = -0.2 * self.facing_direction + arm_angle_offset
-        l_arm_angle = 0.2 * self.facing_direction - arm_angle_offset
-        r_elbow_x = center_x + int(math.cos(r_arm_angle) * upper_arm_length * self.facing_direction)
-        r_elbow_y = shoulder_y + int(math.sin(r_arm_angle) * upper_arm_length)
-        r_hand_x = r_elbow_x + int(math.cos(r_arm_angle - 0.3 * self.facing_direction) * forearm_length * self.facing_direction)
-        r_hand_y = r_elbow_y + int(math.sin(r_arm_angle - 0.3 * self.facing_direction) * forearm_length)
-        l_elbow_x = center_x + int(math.cos(l_arm_angle) * upper_arm_length * self.facing_direction)
-        l_elbow_y = shoulder_y + int(math.sin(l_arm_angle) * upper_arm_length)
-        l_hand_x = l_elbow_x + int(math.cos(l_arm_angle + 0.3 * self.facing_direction) * forearm_length * self.facing_direction)
-        l_hand_y = l_elbow_y + int(math.sin(l_arm_angle + 0.3 * self.facing_direction) * forearm_length)
-
-        pygame.draw.line(screen, self.team_accent, (center_x, shoulder_y), (r_elbow_x, r_elbow_y), limb_width)
-        pygame.draw.line(screen, self.team_accent, (r_elbow_x, r_elbow_y), (r_hand_x, r_hand_y), limb_width)
-        pygame.draw.line(screen, self.team_accent, (center_x, shoulder_y), (l_elbow_x, l_elbow_y), limb_width)
-        pygame.draw.line(screen, self.team_accent, (l_elbow_x, l_elbow_y), (l_hand_x, l_hand_y), limb_width)
+        pygame.draw.line(screen, self.team_accent, shoulder_pos_int, l_elbow_pos_int, limb_width)
+        pygame.draw.line(screen, self.team_accent, l_elbow_pos_int, l_hand_pos_int, limb_width)
+        pygame.draw.line(screen, self.team_accent, shoulder_pos_int, r_elbow_pos_int, limb_width)
+        pygame.draw.line(screen, self.team_accent, r_elbow_pos_int, r_hand_pos_int, limb_width)
 
         # Legs
-        r_leg_angle = 0.1 * self.facing_direction - leg_angle_offset * self.facing_direction
-        l_leg_angle = -0.1 * self.facing_direction + leg_angle_offset * self.facing_direction
-        r_knee_x = center_x + int(math.cos(r_leg_angle) * thigh_length * self.facing_direction)
-        r_knee_y = hip_y + int(math.sin(r_leg_angle) * thigh_length)
-        r_foot_x = r_knee_x + int(math.cos(r_leg_angle + 0.4 * self.facing_direction) * shin_length * self.facing_direction)
-        r_foot_y = r_knee_y + int(math.sin(r_leg_angle + 0.4 * self.facing_direction) * shin_length)
-        l_knee_x = center_x + int(math.cos(l_leg_angle) * thigh_length * self.facing_direction)
-        l_knee_y = hip_y + int(math.sin(l_leg_angle) * thigh_length)
-        l_foot_x = l_knee_x + int(math.cos(l_leg_angle - 0.4 * self.facing_direction) * shin_length * self.facing_direction)
-        l_foot_y = l_knee_y + int(math.sin(l_leg_angle - 0.4 * self.facing_direction) * shin_length)
-
-        pygame.draw.line(screen, self.team_color, (center_x, hip_y), (r_knee_x, r_knee_y), limb_width)
-        pygame.draw.line(screen, self.team_color, (r_knee_x, r_knee_y), (r_foot_x, r_foot_y), limb_width)
-        pygame.draw.line(screen, self.team_color, (center_x, hip_y), (l_knee_x, l_knee_y), limb_width)
-        pygame.draw.line(screen, self.team_color, (l_knee_x, l_knee_y), (l_foot_x, l_foot_y), limb_width)
+        pygame.draw.line(screen, self.team_color, hip_pos_int, l_knee_pos_int, limb_width)
+        pygame.draw.line(screen, self.team_color, l_knee_pos_int, l_foot_pos_int, limb_width)
+        pygame.draw.line(screen, self.team_color, hip_pos_int, r_knee_pos_int, limb_width)
+        pygame.draw.line(screen, self.team_color, r_knee_pos_int, r_foot_pos_int, limb_width)
 
         # --- Draw Stun Effect (If stunned) ---
         if self.is_stunned:
             stun_angle = time.time() * 4 # Simple rotation
+            center_x, head_center_y = head_pos_int # Use actual head position
             for i in range(3): # Draw 3 rotating stars
                 angle = stun_angle + (i * 2 * math.pi / 3)
-                star_x = center_x + math.cos(angle) * (head_radius + 10)
+                star_x = head_pos_int[0] + math.cos(angle) * (head_radius + 10)
                 star_y = head_center_y + math.sin(angle) * (head_radius + 10)
                 # Simple star-like shape with lines
                 star_points = []
@@ -3106,6 +3095,30 @@ while running:
         bg_fps_surf.fill((0, 0, 0, 120))
         screen.blit(bg_fps_surf, bg_fps_rect.topleft)
         screen.blit(fps_surf, fps_rect)
+
+    # Draw Debug Version and Timestamp (Only in debug mode)
+    if debug_mode:
+        debug_font_small = pygame.font.Font(None, 20) # Use a smaller font
+        version_text = f"v{DEBUG_VERSION}"
+        timestamp_text = f"{BUILD_TIMESTAMP}"
+        version_surf = debug_font_small.render(version_text, True, WHITE)
+        timestamp_surf = debug_font_small.render(timestamp_text, True, WHITE)
+        
+        # Position below FPS counter
+        version_rect = version_surf.get_rect(topright=(SCREEN_WIDTH - 10, fps_rect.bottom + 2))
+        timestamp_rect = timestamp_surf.get_rect(topright=(SCREEN_WIDTH - 10, version_rect.bottom + 2))
+
+        # Optional: Background for readability
+        combined_height_debug = version_rect.height + timestamp_rect.height + 4
+        max_width_debug = max(version_rect.width, timestamp_rect.width) + 10
+        bg_debug_info_rect = pygame.Rect(0, 0, max_width_debug, combined_height_debug)
+        bg_debug_info_rect.topright = (SCREEN_WIDTH - 5, fps_rect.bottom)
+        bg_debug_info_surf = pygame.Surface(bg_debug_info_rect.size, pygame.SRCALPHA)
+        bg_debug_info_surf.fill((0, 0, 0, 120)) # Same background as FPS
+        screen.blit(bg_debug_info_surf, bg_debug_info_rect.topleft)
+        
+        screen.blit(version_surf, version_rect)
+        screen.blit(timestamp_surf, timestamp_rect)
 
     pygame.display.flip()
 

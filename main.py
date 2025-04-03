@@ -1154,20 +1154,6 @@ class StickMan: # Updated powerup dict/handling
              self.head_pulse_timer += dt * 5.0
              self.calculate_current_sizes()
 
-        # --- Update Stun Timer ---
-        if self.stun_timer > 0:
-            self.stun_timer -= dt
-            if self.stun_timer <= 0:
-                self.stun_timer = 0.0
-                self.is_stunned = False
-                print(f"Player {1 if self.facing_direction==1 else 2} is no longer stunned.")
-            else:
-                self.is_stunned = True
-                # Stop any current movement if stunned
-                self.vx = 0
-        else:
-            self.is_stunned = False
-
         current_gravity = GRAVITY * POWERUP_LOW_GRAVITY_FACTOR if "LOW_GRAVITY" in self.active_powerups else GRAVITY
         weather_effect = WEATHER_EFFECTS.get(current_weather, WEATHER_EFFECTS["SUNNY"])
         current_gravity *= weather_effect.get("gravity", 1.0) # Apply weather gravity multiplier
@@ -2651,25 +2637,46 @@ while running:
                     start_new_game()
                 elif game_over:
                     start_new_game()
-            elif match_active and current_game_state == "PLAYING": # Check game state
-                if not player1.is_tumbling:
-                    if event.key == pygame.K_a: player1.move(-1)
-                    elif event.key == pygame.K_d: player1.move(1)
-                    elif event.key == pygame.K_w: player1.jump()
+            # Lägg till hantering för hopp och spark
+            elif match_active and current_game_state == "PLAYING": 
+                if not player1.is_tumbling and not player1.is_stunned:
+                    if event.key == pygame.K_w: player1.jump()
                     elif event.key == pygame.K_s: player1.start_kick()
-                if not player2.is_tumbling:
-                    if event.key == pygame.K_LEFT: player2.move(-1)
-                    elif event.key == pygame.K_RIGHT: player2.move(1)
-                    elif event.key == pygame.K_UP: player2.jump()
+                if not player2.is_tumbling and not player2.is_stunned:
+                    if event.key == pygame.K_UP: player2.jump()
                     elif event.key == pygame.K_DOWN: player2.start_kick()
         if event.type == pygame.KEYUP:
              if match_active and current_game_state == "PLAYING": # Check game state
-                if not player1.is_tumbling:
-                    if event.key == pygame.K_a and player1.vx < 0: player1.stop_move()
-                    elif event.key == pygame.K_d and player1.vx > 0: player1.stop_move()
-                if not player2.is_tumbling:
-                    if event.key == pygame.K_LEFT and player2.vx < 0: player2.stop_move()
-                    elif event.key == pygame.K_RIGHT and player2.vx > 0: player2.stop_move()
+                # Ta bort rörelsehantering helt här
+                pass
+
+    # --- Keyboard State Processing ---
+    if match_active and current_game_state == "PLAYING":
+        keys = pygame.key.get_pressed()
+        
+        # Player 1 Movement
+        if not player1.is_tumbling and not player1.is_stunned:
+            moving_left_p1 = keys[pygame.K_a]
+            moving_right_p1 = keys[pygame.K_d]
+            if moving_left_p1 and not moving_right_p1:
+                player1.move(-1)
+            elif moving_right_p1 and not moving_left_p1:
+                player1.move(1)
+            else:
+                # Om spelaren inte trycker på någon rörelseknapp ELLER trycker på båda samtidigt
+                player1.stop_move()
+                
+        # Player 2 Movement
+        if not player2.is_tumbling and not player2.is_stunned:
+            moving_left_p2 = keys[pygame.K_LEFT]
+            moving_right_p2 = keys[pygame.K_RIGHT]
+            if moving_left_p2 and not moving_right_p2:
+                player2.move(-1)
+            elif moving_right_p2 and not moving_left_p2:
+                player2.move(1)
+            else:
+                # Om spelaren inte trycker på någon rörelseknapp ELLER trycker på båda samtidigt
+                player2.stop_move()
 
     # --- Game State Logic ---
     if current_game_state == "WELCOME":
@@ -2677,350 +2684,247 @@ while running:
         pygame.display.flip()
         continue
     elif current_game_state == "PLAYING":
-        # ... (game update logic previously here) ...
-        pass # Placeholder for game update logic
-    elif current_game_state == "GAME_OVER":
-        # ... (game over logic unchanged) ...
-        pass # Placeholder
+        # --- State-based Input Handling (Movement) --- ADD THIS BLOCK INSIDE PLAYING STATE
+        if match_active: # Check if match is active first
+            # Player 1 Movement
+            if not player1.is_tumbling and not player1.is_stunned:
+                moving_left_p1 = keys[pygame.K_a]
+                moving_right_p1 = keys[pygame.K_d]
+                if moving_left_p1 and not moving_right_p1:
+                    player1.move(-1)
+                elif moving_right_p1 and not moving_left_p1:
+                    player1.move(1)
+                else: # Neither or both pressed
+                    # Stop only if not being moved by external forces (like explosion)
+                    # And if movement keys are actually released
+                    if player1.vx != 0 and not moving_left_p1 and not moving_right_p1:
+                         # Check if current velocity is roughly what movement would cause
+                         # This is a heuristic to avoid stopping external forces
+                         if abs(player1.vx) <= player1.player_speed + 0.1:
+                               player1.stop_move()
 
-    # --- Drawing --- (Moved outside game state conditional for now, might need refactoring)
-    if current_game_state == "WELCOME":
-        # This part is now handled above, just pass
-        pass
-    elif current_game_state == "PLAYING" or (current_game_state == "GAME_OVER" and overall_winner): # Also draw game state during game over display
-        # ... (existing drawing logic for PLAYING and GAME_OVER) ...
-        pass # Placeholder for drawing logic
-    elif current_game_state == "GAME_OVER": # Handle final drawing if needed separately
-         # Draw final game over screen with winner trophy etc.
-         # ... (final game over drawing logic - already includes trophy) ...
-         pass # Placeholder
+            # Player 2 Movement
+            if not player2.is_tumbling and not player2.is_stunned:
+                moving_left_p2 = keys[pygame.K_LEFT]
+                moving_right_p2 = keys[pygame.K_RIGHT]
+                if moving_left_p2 and not moving_right_p2:
+                    player2.move(-1)
+                elif moving_right_p2 and not moving_left_p2:
+                    player2.move(1)
+                else: # Neither or both pressed
+                    if player2.vx != 0 and not moving_left_p2 and not moving_right_p2:
+                         if abs(player2.vx) <= player2.player_speed + 0.1:
+                               player2.stop_move()
 
-    # ... (rest of the loop, including updates and drawing, needs to be under appropriate game state checks) ...
+        # --- Handle Game Over State ---
+        # ... existing code ...
+        # --- Handle Match Over State ---
+        # ... existing code ...
+        # --- Process Announcement Sound Queue ---
+        # ... existing code ...
+        # --- Power-up Spawning (with Jackpot) ---
+        # ... existing code ...
+        # --- Update Global Powerup Timers ---
+        # ... existing code ...
 
-    # --- Handle Game Over State --- (This block seems misplaced based on the error, should be part of main game logic drawing/update)
-    # if game_over: # ... (unchanged) ...
-    # ... (rest of the game over handling logic) ...
+        # --- Updates (Only if match active) ---
+        if match_active:
+            if p1_body_collision_timer > 0: p1_body_collision_timer -= 1
+            if p2_body_collision_timer > 0: p2_body_collision_timer -= 1
+            if goal_message_timer > 0: goal_message_timer -= dt
+            if screen_flash_timer > 0: screen_flash_timer -= dt
 
-    # Check if we should show welcome screen (REPLACED LOGIC)
-    # if showing_welcome_screen: # OLD LOGIC
-    if current_game_state == "WELCOME": # NEW LOGIC
-        draw_welcome_screen(screen, font_goal, font_large, font_medium)
-        pygame.display.flip()
-        continue
+            player1.update(dt, player2); player2.update(dt, player1)
+            ball_hit_ground_this_frame = ball.update(dt)
 
-    # ... (rest of the main loop)
+            # Update active powerups and remove inactive
+            active_powerups = [p for p in active_powerups if p.update(dt)] # Corrected filter
 
-    # --- Handle Game Over State ---
-    if game_over: # ... (unchanged) ...
-        if not game_over_sound_played:
-            announcement_queue = [];
-            if overall_winner == 1: queue_sound(loaded_sounds['nils_wins'])
-            elif overall_winner == 2: queue_sound(loaded_sounds['harry_wins'])
-            play_next_announcement(); game_over_sound_played = True
-        bg_color = DEBUG_BG_COLOR if debug_mode else SKY_BLUE
-        screen.fill(bg_color); pygame.draw.rect(screen, GRASS_GREEN, (0, GROUND_Y, SCREEN_WIDTH, SCREEN_HEIGHT - GROUND_Y))
-        winner_name = "Nils" if overall_winner == 1 else "Harry";
-        draw_trophy(screen, winner_name, font_goal, font_large)
-        
-        # Draw the trophy at the center
-        trophy_center_x = SCREEN_WIDTH // 2
-        trophy_base_y = SCREEN_HEIGHT // 2 + 180
-        
-        # Display Harry's images if Harry wins
-        if overall_winner == 2:
-            # First, draw harry_eats.png on the left
-            if winner_images.get("harry_eats"):
-                harry_eats_image = winner_images["harry_eats"]
-                eats_rect = harry_eats_image.get_rect()
-                eats_center_y = SCREEN_HEIGHT // 2 + 180 - 40 - 100 // 2
-                eats_rect.center = (trophy_center_x - 280, eats_center_y)  # 280 pixels to the left of trophy (was 300)
-                screen.blit(harry_eats_image, eats_rect)
-                
-            # Then, draw harry_wins.png on the right
-            if winner_images.get(overall_winner):
-                winner_image = winner_images[overall_winner]
-                image_rect = winner_image.get_rect()
-                image_center_y = SCREEN_HEIGHT // 2 + 180 - 40 - 100 // 2
-                image_rect.center = (trophy_center_x + 300, image_center_y)  # 300 pixels to the right of trophy
-                image_rect.right = min(image_rect.right, SCREEN_WIDTH - 10)
-                screen.blit(winner_image, image_rect)
-        # Display Nils' image if Nils wins
-        elif overall_winner == 1 and winner_images.get(overall_winner):
-            winner_image = winner_images[overall_winner]
-            image_rect = winner_image.get_rect()
-            base_width = 140
-            padding = 50
-            image_center_x = trophy_center_x + base_width // 2 + image_rect.width // 2 + padding
-            image_center_y = SCREEN_HEIGHT // 2 + 180 - 40 - 100 // 2
-            image_rect.center = (image_center_x, image_center_y)
-            image_rect.right = min(image_rect.right, SCREEN_WIDTH - 10)
-            screen.blit(winner_image, image_rect)
+            particles = [p for p in particles if p.update(dt)]
+            active_rockets = [r for r in active_rockets if r.active and not r.update(dt, player_list, ball)]
+            active_explosions = [e for e in active_explosions if e.update(dt)]
             
-        draw_game_scores(screen, game_scores, font_small); pygame.display.flip(); continue
-
-    # --- Handle Match Over State ---
-    if match_over_timer > 0: # ... (unchanged) ...
-        match_over_timer -= dt
-        if match_over_timer <= 0 and not game_over: start_new_match()
-
-    # --- Process Announcement Sound Queue ---
-    play_next_announcement()
-
-    # --- Power-up Spawning (with Jackpot) ---
-    if match_active: # ... (unchanged) ...
-        powerup_spawn_timer -= dt
-        if powerup_spawn_timer <= 0:
-            if not jackpot_triggered_this_match and random.randint(1, 6) == 1:
-                print("!!! SUPER JACKPOT !!!"); play_sound(loaded_sounds.get('super_jackpot', []))
-                jackpot_triggered_this_match = True
-                for _ in range(8):
-                    new_powerup = ParachutePowerup(); new_powerup.spawn(); active_powerups.append(new_powerup)
-            else:
-                new_powerup = ParachutePowerup(); new_powerup.spawn(); active_powerups.append(new_powerup)
-            powerup_spawn_timer = random.uniform(POWERUP_SPAWN_INTERVAL_MIN, POWERUP_SPAWN_INTERVAL_MAX)
-
-    # --- Update Global Powerup Timers ---
-    if ball_freeze_timer > 0: # ... (unchanged) ...
-        ball_freeze_timer -= dt
-        if ball_freeze_timer <= 0:
-            # --- Apply Accumulated Momentum on Thaw ---
-            if ball.is_frozen: # Apply only if it was frozen
-                print(f"Ball un-frozen! Applying accumulated momentum: vx={ball.accumulated_vx:.1f}, vy={ball.accumulated_vy:.1f}")
-                # Limit the applied momentum magnitude if needed
-                max_release_vel = 2000 # Maximum velocity after release
-                current_mag_sq = ball.vx**2 + ball.vy**2
-                release_vx = ball.vx + ball.accumulated_vx
-                release_vy = ball.vy + ball.accumulated_vy
-                release_mag_sq = release_vx**2 + release_vy**2
-
-                if release_mag_sq > max_release_vel**2:
-                     scale_factor = max_release_vel / math.sqrt(release_mag_sq)
-                     ball.vx = release_vx * scale_factor
-                     ball.vy = release_vy * scale_factor
-                else:
-                    ball.vx = release_vx
-                    ball.vy = release_vy
-                
-                ball.accumulated_vx = 0.0 # Reset accumulated momentum
-                ball.accumulated_vy = 0.0
-                ball.is_frozen = False
-                ball.freeze_effect_timer = POWERUP_BALL_FREEZE_DURATION * 0.1 # Visual effect timer
-            else:
-                # If timer ran out but ball wasn't technically frozen (e.g., timer reset)
-                ball.is_frozen = False 
-                ball.freeze_effect_timer = 0.0
-                ball.accumulated_vx = 0.0 
-                ball.accumulated_vy = 0.0
-    if p1_shield_timer > 0: # ... (unchanged) ...
-        p1_shield_timer -= dt
-        if p1_shield_timer <= 0: p1_shield_active = False; print("P1 Shield down")
-    if p2_shield_timer > 0: # ... (unchanged) ...
-        p2_shield_timer -= dt
-        if p2_shield_timer <= 0: p2_shield_active = False; print("P2 Shield down")
-    if p1_goal_enlarged_timer > 0: # ... (unchanged) ...
-        p1_goal_enlarged_timer -= dt
-        if p1_goal_enlarged_timer <= 0: print("P1 Goal Normal Size")
-    if p2_goal_enlarged_timer > 0: # ... (unchanged) ...
-        p2_goal_enlarged_timer -= dt
-        if p2_goal_enlarged_timer <= 0: print("P2 Goal Normal Size")
-
-
-    # --- Updates (Only if match active) ---
-    if match_active:
-        if p1_body_collision_timer > 0: p1_body_collision_timer -= 1
-        if p2_body_collision_timer > 0: p2_body_collision_timer -= 1
-        if goal_message_timer > 0: goal_message_timer -= dt
-        if screen_flash_timer > 0: screen_flash_timer -= dt
-
-        player1.update(dt, player2); player2.update(dt, player1)
-        ball_hit_ground_this_frame = ball.update(dt)
-
-        # Update active powerups and remove inactive
-        active_powerups = [p for p in active_powerups if p.update(dt)] # Corrected filter
-
-        particles = [p for p in particles if p.update(dt)]
-        active_rockets = [r for r in active_rockets if r.active and not r.update(dt, player_list, ball)]
-        active_explosions = [e for e in active_explosions if e.update(dt)]
-        
-        # --- Weather Updates ---
-        if weather_particles_enabled:
-            # Update weather particles (Spread out updates)
-            current_frame_index = int(total_game_time * TARGET_FPS) # Approximate frame index
-            for i, p in enumerate(weather_particles):
-                 # Update only half the particles each frame (alternating)
-                 if i % 2 == current_frame_index % 2:
-                     p.update(dt)
-            
-        if current_weather == "WINDY":
-            weather_wind_change_timer -= dt
-            if weather_wind_change_timer <= 0:
-                WEATHER_WIND_DIRECTION = -WEATHER_WIND_DIRECTION # Flip direction
-                min_force, max_force = WEATHER_EFFECTS["WINDY"].get("wind_force_range", (0.0, 0.0))
-                CURRENT_WIND_FORCE = random.uniform(min_force, max_force) # New random force
-                print(f"Wind changed! New Force: {CURRENT_WIND_FORCE:.1f}, Direction: {'RIGHT' if WEATHER_WIND_DIRECTION > 0 else 'LEFT'}")
-                
-                # Create wind change particles/effects
-                wind_color = (200, 200, 255, 150) 
-                for _ in range(20):
-                    start_x = random.randint(0, SCREEN_WIDTH)
-                    start_y = random.randint(50, GROUND_Y - 50)
-                    # Angle override based on new direction
-                    angle_ov = 0 if WEATHER_WIND_DIRECTION > 0 else math.pi 
-                    particles.append(Particle(
-                        start_x, start_y, 
-                        colors=[wind_color], 
-                        speed_min=CURRENT_WIND_FORCE * 5, # Adjusted speed based on force
-                        speed_max=CURRENT_WIND_FORCE * 10, 
-                        size=3, 
-                        angle_override=angle_ov
-                    ))
-                
-                weather_wind_change_timer = random.uniform(8.0, 18.0) # Reset timer
-                
-                # Recreate wind particles with new direction/speed potentially
-                # (Optional: Could make existing particles change direction too)
+            # --- Weather Updates ---
+            if weather_particles_enabled:
+                # Update weather particles (Spread out updates)
+                current_frame_index = int(total_game_time * TARGET_FPS) # Approximate frame index
                 for i, p in enumerate(weather_particles):
-                    if p.weather_type == "WINDY":
-                        p.speed = random.uniform(100, 200) * WEATHER_WIND_DIRECTION  # Ta bort negativa tecknet här också
-
-        # --- Power-up Collection ---
-        collected_powerups_indices = [] # ... (unchanged logic including BALL_FREEZE trigger) ...
-        for i, pup in enumerate(active_powerups):
-            collected_this_pup = False
-            if not collected_this_pup and not player1.is_tumbling:
-                collected_type_p1 = pup.check_collision(player1)
-                if collected_type_p1:
-                    player1.apply_powerup(collected_type_p1, other_player=player2)
-                    collected_powerups_indices.append(i); collected_this_pup = True
-                    if collected_type_p1 == "BALL_FREEZE":
-                         print("Ball Freeze collected - Spawning 2 more powerups!")
-                         new_powerup1 = ParachutePowerup(); new_powerup1.spawn(); active_powerups.append(new_powerup1)
-                         new_powerup2 = ParachutePowerup(); new_powerup2.spawn(); active_powerups.append(new_powerup2)
-                         powerup_spawn_timer = random.uniform(POWERUP_SPAWN_INTERVAL_MIN, POWERUP_SPAWN_INTERVAL_MAX)
-
-            if not collected_this_pup and not player2.is_tumbling:
-                collected_type_p2 = pup.check_collision(player2)
-                if collected_type_p2:
-                    player2.apply_powerup(collected_type_p2, other_player=player1)
-                    collected_powerups_indices.append(i)
-                    if collected_type_p2 == "BALL_FREEZE":
-                         print("Ball Freeze collected - Spawning 2 more powerups!")
-                         new_powerup1 = ParachutePowerup(); new_powerup1.spawn(); active_powerups.append(new_powerup1)
-                         new_powerup2 = ParachutePowerup(); new_powerup2.spawn(); active_powerups.append(new_powerup2)
-                         powerup_spawn_timer = random.uniform(POWERUP_SPAWN_INTERVAL_MIN, POWERUP_SPAWN_INTERVAL_MAX)
-
-        if collected_powerups_indices:
-             active_powerups = [pup for idx, pup in enumerate(active_powerups) if idx not in collected_powerups_indices]
-
-
-        # --- Player Collisions ---
-        # ... (player-player collision unchanged) ...
-        p1_rect = player1.get_body_rect(); p2_rect = player2.get_body_rect()
-        if p1_rect.colliderect(p2_rect):
-            p1_is_on_p2 = player1.on_other_player_head; p2_is_on_p1 = player2.on_other_player_head
-            if p1_is_on_p2 and abs(player1.y - (player2.head_pos[1] - player2.head_radius)) > 10: p1_is_on_p2 = False
-            if p2_is_on_p1 and abs(player2.y - (player1.head_pos[1] - player1.head_radius)) > 10: p2_is_on_p1 = False
-            if not p1_is_on_p2 and not p2_is_on_p1:
-                dx = player2.x - player1.x; overlap_x = (p1_rect.width / 2 + p2_rect.width / 2) - abs(dx)
-                if overlap_x > 0:
-                    play_sound(loaded_sounds['player_bump']); push = overlap_x / 2 + 0.1
-                    if dx >= 0: player1.x -= push; player2.x += push;
-                    if player1.vx > 0: player1.vx = 0
-                    if player2.vx < 0: player2.vx = 0
-                    else: player1.x += push; player2.x -= push;
-                    if player1.vx < 0: player1.vx = 0
-                    if player2.vx > 0: player2.vx = 0
-        kick_push_amount = ball.radius * 1.5; kick_push_vx_base = 5
-        kick_hitbox_buffer = 10.0  # Buffer for easier head hits
-        p1_kick_point = player1.get_kick_impact_point()
-
-        if p1_kick_point:
-            # Check head collision with buffer
-            head_distance = math.sqrt((p1_kick_point[0] - player2.head_pos[0])**2 + (p1_kick_point[1] - player2.head_pos[1])**2)
-            if head_distance < player2.head_radius + kick_hitbox_buffer and not player2.is_tumbling:
-                print("P1 kicked P2's head - STUN!")
-                player2.start_stun(1)  # Stun for 1 second
-                kick_multiplier = BIG_PLAYER_KICK_MULTIPLIER if player1.is_big else 1.0
-                kick_push_vx = kick_push_vx_base * kick_multiplier * 0.7  # Less pushback on head hits
-                player2.x += kick_push_amount * player1.facing_direction * kick_multiplier * 0.7
-                player2.vx += kick_push_vx * player1.facing_direction
-                player2.vy -= 2 * kick_multiplier
-                player2.is_jumping = True
-                play_sound(loaded_sounds['body_hit'])
-            # Body collision check (no stun, just pushback)
-            elif p2_rect.collidepoint(p1_kick_point) and not player2.is_tumbling:
-                print("P1 kicked P2's body")
-                kick_multiplier = BIG_PLAYER_KICK_MULTIPLIER if player1.is_big else 1.0
-                kick_push_vx = kick_push_vx_base * kick_multiplier
-                player2.x += kick_push_amount * player1.facing_direction * kick_multiplier
-                player2.vx += kick_push_vx * player1.facing_direction
-                player2.vy -= 3 * kick_multiplier
-                player2.is_jumping = True
-                play_sound(loaded_sounds['body_hit'])
-
-        p2_kick_point = player2.get_kick_impact_point()
-        if p2_kick_point:
-            # Check head collision with buffer
-            head_distance = math.sqrt((p2_kick_point[0] - player1.head_pos[0])**2 + (p2_kick_point[1] - player1.head_pos[1])**2)
-            if head_distance < player1.head_radius + kick_hitbox_buffer and not player1.is_tumbling:
-                print("P2 kicked P1's head - STUN!")
-                player1.start_stun(1)  # Stun for 1 second
-                kick_multiplier = BIG_PLAYER_KICK_MULTIPLIER if player2.is_big else 1.0
-                kick_push_vx = kick_push_vx_base * kick_multiplier * 0.7  # Less pushback on head hits
-                player1.x += kick_push_amount * player2.facing_direction * kick_multiplier * 0.7
-                player1.vx += kick_push_vx * player2.facing_direction
-                player1.vy -= 2 * kick_multiplier
-                player1.is_jumping = True
-                play_sound(loaded_sounds['body_hit'])
-            # Body collision check (no stun, just pushback)
-            elif p1_rect.collidepoint(p2_kick_point) and not player1.is_tumbling:
-                print("P2 kicked P1's body")
-                kick_multiplier = BIG_PLAYER_KICK_MULTIPLIER if player2.is_big else 1.0
-                kick_push_vx = kick_push_vx_base * kick_multiplier
-                player1.x += kick_push_amount * player2.facing_direction * kick_multiplier
-                player1.vx += kick_push_vx * player2.facing_direction
-                player1.vy -= 3 * kick_multiplier
-                player1.is_jumping = True
-                play_sound(loaded_sounds['body_hit'])
-        # --- SWORD-PLAYER COLLISIONS ---
-        # Check for player1's sword hitting player2
-        if player1.is_sword and player1.is_kicking and not player2.is_tumbling:
-            sword_data = player1.get_sword_position()
-            if sword_data:
-                tip_x, tip_y, base_x, base_y, angle = sword_data
-                # Check if sword line collides with player2's rect using clipline
-                if p2_rect.clipline(base_x, base_y, tip_x, tip_y):
-                    print("P1 sword hit P2!")
-                    player2.x += SWORD_PLAYER_HIT_FORCE * 0.01 * player1.facing_direction
-                    player2.vx += SWORD_PLAYER_HIT_FORCE * 0.1 * player1.facing_direction
-                    player2.vy -= SWORD_PLAYER_UPWARD_BOOST * 0.1
-                    player2.is_jumping = True
-                    player2.start_tumble()
-                    play_sound(loaded_sounds.get('sword_hit', loaded_sounds['wall_hit']))
-        
-        # Check for player2's sword hitting player1
-        if player2.is_sword and player2.is_kicking and not player1.is_tumbling:
-            sword_data = player2.get_sword_position()
-            if sword_data:
-                tip_x, tip_y, base_x, base_y, angle = sword_data
-                # Check if sword line collides with player1's rect using clipline
-                if p1_rect.clipline(base_x, base_y, tip_x, tip_y):
-                    print("P2 sword hit P1!")
-                    player1.x += SWORD_PLAYER_HIT_FORCE * 0.01 * player2.facing_direction
-                    player1.vx += SWORD_PLAYER_HIT_FORCE * 0.1 * player2.facing_direction
-                    player1.vy -= SWORD_PLAYER_UPWARD_BOOST * 0.1
-                    player1.is_jumping = True
-                    player1.start_tumble()
-                    play_sound(loaded_sounds.get('sword_hit', loaded_sounds['wall_hit']))
+                     # Update only half the particles each frame (alternating)
+                     if i % 2 == current_frame_index % 2:
+                         p.update(dt)
                 
-        player1.x = max(player1.limb_width / 2, min(player1.x, SCREEN_WIDTH - player1.limb_width / 2))
-        player2.x = max(player2.limb_width / 2, min(player2.x, SCREEN_WIDTH - player2.limb_width / 2))
+            if current_weather == "WINDY":
+                weather_wind_change_timer -= dt
+                if weather_wind_change_timer <= 0:
+                    WEATHER_WIND_DIRECTION = -WEATHER_WIND_DIRECTION # Flip direction
+                    min_force, max_force = WEATHER_EFFECTS["WINDY"].get("wind_force_range", (0.0, 0.0))
+                    CURRENT_WIND_FORCE = random.uniform(min_force, max_force) # New random force
+                    print(f"Wind changed! New Force: {CURRENT_WIND_FORCE:.1f}, Direction: {'RIGHT' if WEATHER_WIND_DIRECTION > 0 else 'LEFT'}")
+                    
+                    # Create wind change particles/effects
+                    wind_color = (200, 200, 255, 150) 
+                    for _ in range(20):
+                        start_x = random.randint(0, SCREEN_WIDTH)
+                        start_y = random.randint(50, GROUND_Y - 50)
+                        # Angle override based on new direction
+                        angle_ov = 0 if WEATHER_WIND_DIRECTION > 0 else math.pi 
+                        particles.append(Particle(
+                            start_x, start_y, 
+                            colors=[wind_color], 
+                            speed_min=CURRENT_WIND_FORCE * 5, # Adjusted speed based on force
+                            speed_max=CURRENT_WIND_FORCE * 10, 
+                            size=3, 
+                            angle_override=angle_ov
+                        ))
+                    
+                    weather_wind_change_timer = random.uniform(8.0, 18.0) # Reset timer
+                    
+                    # Recreate wind particles with new direction/speed potentially
+                    # (Optional: Could make existing particles change direction too)
+                    for i, p in enumerate(weather_particles):
+                        if p.weather_type == "WINDY":
+                            p.speed = random.uniform(100, 200) * WEATHER_WIND_DIRECTION  # Ta bort negativa tecknet här också
 
-        # Combo Reset
-        is_ball_airborne = not ball.is_on_ground()
-        if not is_ball_airborne and ball_hit_ground_this_frame and not ball_was_on_ground: current_hit_count = 0
-        ball_was_on_ground = not is_ball_airborne
+            # --- Power-up Collection ---
+            collected_powerups_indices = [] # ... (unchanged logic including BALL_FREEZE trigger) ...
+            for i, pup in enumerate(active_powerups):
+                collected_this_pup = False
+                if not collected_this_pup and not player1.is_tumbling:
+                    collected_type_p1 = pup.check_collision(player1)
+                    if collected_type_p1:
+                        player1.apply_powerup(collected_type_p1, other_player=player2)
+                        collected_powerups_indices.append(i); collected_this_pup = True
+                        if collected_type_p1 == "BALL_FREEZE":
+                             print("Ball Freeze collected - Spawning 2 more powerups!")
+                             new_powerup1 = ParachutePowerup(); new_powerup1.spawn(); active_powerups.append(new_powerup1)
+                             new_powerup2 = ParachutePowerup(); new_powerup2.spawn(); active_powerups.append(new_powerup2)
+                             powerup_spawn_timer = random.uniform(POWERUP_SPAWN_INTERVAL_MIN, POWERUP_SPAWN_INTERVAL_MAX)
 
+                if not collected_this_pup and not player2.is_tumbling:
+                    collected_type_p2 = pup.check_collision(player2)
+                    if collected_type_p2:
+                        player2.apply_powerup(collected_type_p2, other_player=player1)
+                        collected_powerups_indices.append(i)
+                        if collected_type_p2 == "BALL_FREEZE":
+                             print("Ball Freeze collected - Spawning 2 more powerups!")
+                             new_powerup1 = ParachutePowerup(); new_powerup1.spawn(); active_powerups.append(new_powerup1)
+                             new_powerup2 = ParachutePowerup(); new_powerup2.spawn(); active_powerups.append(new_powerup2)
+                             powerup_spawn_timer = random.uniform(POWERUP_SPAWN_INTERVAL_MIN, POWERUP_SPAWN_INTERVAL_MAX)
+
+            if collected_powerups_indices:
+                 active_powerups = [pup for idx, pup in enumerate(active_powerups) if idx not in collected_powerups_indices]
+
+
+            # --- Player Collisions ---
+            # ... (player-player collision unchanged) ...
+            p1_rect = player1.get_body_rect(); p2_rect = player2.get_body_rect()
+            if p1_rect.colliderect(p2_rect):
+                p1_is_on_p2 = player1.on_other_player_head; p2_is_on_p1 = player2.on_other_player_head
+                if p1_is_on_p2 and abs(player1.y - (player2.head_pos[1] - player2.head_radius)) > 10: p1_is_on_p2 = False
+                if p2_is_on_p1 and abs(player2.y - (player1.head_pos[1] - player1.head_radius)) > 10: p2_is_on_p1 = False
+                if not p1_is_on_p2 and not p2_is_on_p1:
+                    dx = player2.x - player1.x; overlap_x = (p1_rect.width / 2 + p2_rect.width / 2) - abs(dx)
+                    if overlap_x > 0:
+                        play_sound(loaded_sounds['player_bump']); push = overlap_x / 2 + 0.1
+                        if dx >= 0: player1.x -= push; player2.x += push;
+                        if player1.vx > 0: player1.vx = 0
+                        if player2.vx < 0: player2.vx = 0
+                        else: player1.x += push; player2.x -= push;
+                        if player1.vx < 0: player1.vx = 0
+                        if player2.vx > 0: player2.vx = 0
+            kick_push_amount = ball.radius * 1.5; kick_push_vx_base = 5
+            kick_hitbox_buffer = 10.0  # Buffer for easier head hits
+            p1_kick_point = player1.get_kick_impact_point()
+
+            if p1_kick_point:
+                # Check head collision with buffer
+                head_distance = math.sqrt((p1_kick_point[0] - player2.head_pos[0])**2 + (p1_kick_point[1] - player2.head_pos[1])**2)
+                if head_distance < player2.head_radius + kick_hitbox_buffer and not player2.is_tumbling:
+                    print("P1 kicked P2's head - STUN!")
+                    player2.start_stun(1)  # Stun for 1 second
+                    kick_multiplier = BIG_PLAYER_KICK_MULTIPLIER if player1.is_big else 1.0
+                    kick_push_vx = kick_push_vx_base * kick_multiplier * 0.7  # Less pushback on head hits
+                    player2.x += kick_push_amount * player1.facing_direction * kick_multiplier * 0.7
+                    player2.vx += kick_push_vx * player1.facing_direction
+                    player2.vy -= 2 * kick_multiplier
+                    player2.is_jumping = True
+                    play_sound(loaded_sounds['body_hit'])
+                # Body collision check (no stun, just pushback)
+                elif p2_rect.collidepoint(p1_kick_point) and not player2.is_tumbling:
+                    print("P1 kicked P2's body")
+                    kick_multiplier = BIG_PLAYER_KICK_MULTIPLIER if player1.is_big else 1.0
+                    kick_push_vx = kick_push_vx_base * kick_multiplier
+                    player2.x += kick_push_amount * player1.facing_direction * kick_multiplier
+                    player2.vx += kick_push_vx * player1.facing_direction
+                    player2.vy -= 3 * kick_multiplier
+                    player2.is_jumping = True
+                    play_sound(loaded_sounds['body_hit'])
+
+            p2_kick_point = player2.get_kick_impact_point()
+            if p2_kick_point:
+                # Check head collision with buffer
+                head_distance = math.sqrt((p2_kick_point[0] - player1.head_pos[0])**2 + (p2_kick_point[1] - player1.head_pos[1])**2)
+                if head_distance < player1.head_radius + kick_hitbox_buffer and not player1.is_tumbling:
+                    print("P2 kicked P1's head - STUN!")
+                    player1.start_stun(1)  # Stun for 1 second
+                    kick_multiplier = BIG_PLAYER_KICK_MULTIPLIER if player2.is_big else 1.0
+                    kick_push_vx = kick_push_vx_base * kick_multiplier * 0.7  # Less pushback on head hits
+                    player1.x += kick_push_amount * player2.facing_direction * kick_multiplier * 0.7
+                    player1.vx += kick_push_vx * player2.facing_direction
+                    player1.vy -= 2 * kick_multiplier
+                    player1.is_jumping = True
+                    play_sound(loaded_sounds['body_hit'])
+                # Body collision check (no stun, just pushback)
+                elif p1_rect.collidepoint(p2_kick_point) and not player1.is_tumbling:
+                    print("P2 kicked P1's body")
+                    kick_multiplier = BIG_PLAYER_KICK_MULTIPLIER if player2.is_big else 1.0
+                    kick_push_vx = kick_push_vx_base * kick_multiplier
+                    player1.x += kick_push_amount * player2.facing_direction * kick_multiplier
+                    player1.vx += kick_push_vx * player2.facing_direction
+                    player1.vy -= 3 * kick_multiplier
+                    player1.is_jumping = True
+                    play_sound(loaded_sounds['body_hit'])
+            # --- SWORD-PLAYER COLLISIONS ---
+            # Check for player1's sword hitting player2
+            if player1.is_sword and player1.is_kicking and not player2.is_tumbling:
+                sword_data = player1.get_sword_position()
+                if sword_data:
+                    tip_x, tip_y, base_x, base_y, angle = sword_data
+                    # Check if sword line collides with player2's rect using clipline
+                    if p2_rect.clipline(base_x, base_y, tip_x, tip_y):
+                        print("P1 sword hit P2!")
+                        player2.x += SWORD_PLAYER_HIT_FORCE * 0.01 * player1.facing_direction
+                        player2.vx += SWORD_PLAYER_HIT_FORCE * 0.1 * player1.facing_direction
+                        player2.vy -= SWORD_PLAYER_UPWARD_BOOST * 0.1
+                        player2.is_jumping = True
+                        player2.start_tumble()
+                        play_sound(loaded_sounds.get('sword_hit', loaded_sounds['wall_hit']))
+            
+            # Check for player2's sword hitting player1
+            if player2.is_sword and player2.is_kicking and not player1.is_tumbling:
+                sword_data = player2.get_sword_position()
+                if sword_data:
+                    tip_x, tip_y, base_x, base_y, angle = sword_data
+                    # Check if sword line collides with player1's rect using clipline
+                    if p1_rect.clipline(base_x, base_y, tip_x, tip_y):
+                        print("P2 sword hit P1!")
+                        player1.x += SWORD_PLAYER_HIT_FORCE * 0.01 * player2.facing_direction
+                        player1.vx += SWORD_PLAYER_HIT_FORCE * 0.1 * player2.facing_direction
+                        player1.vy -= SWORD_PLAYER_UPWARD_BOOST * 0.1
+                        player1.is_jumping = True
+                        player1.start_tumble()
+                        play_sound(loaded_sounds.get('sword_hit', loaded_sounds['wall_hit']))
+                    
+            player1.x = max(player1.limb_width / 2, min(player1.x, SCREEN_WIDTH - player1.limb_width / 2))
+            player2.x = max(player2.limb_width / 2, min(player2.x, SCREEN_WIDTH - player2.limb_width / 2))
+
+            # Combo Reset
+            is_ball_airborne = not ball.is_on_ground()
+            if not is_ball_airborne and ball_hit_ground_this_frame and not ball_was_on_ground: current_hit_count = 0
+            ball_was_on_ground = not is_ball_airborne
+
+            # Player-Ball Collisions (only if not tumbling)
+            p1_hit, p1_can_headbutt, p1_body_collision_timer, p1_kick_pt = False, p1_can_headbutt, p1_body_collision_timer, None
         # Player-Ball Collisions (only if not tumbling)
         p1_hit, p1_can_headbutt, p1_body_collision_timer, p1_kick_pt = False, p1_can_headbutt, p1_body_collision_timer, None
         p2_hit, p2_can_headbutt, p2_body_collision_timer, p2_kick_pt = False, p2_can_headbutt, p2_body_collision_timer, None

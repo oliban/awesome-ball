@@ -1608,18 +1608,44 @@ class Ball:
         self.x = x; self.y = y; self.radius = radius; self.vx = 0; self.vy = 0;
         self.last_hit_by = None; self.rotation_angle = 0
         self.is_frozen = False; self.freeze_effect_timer = 0.0
+        self.accumulated_vx = 0.0 # New: Store momentum while frozen
+        self.accumulated_vy = 0.0 # New: Store momentum while frozen
         self.on_left_crossbar = False  # Håller reda på om bollen redan är på vänster ribba
         self.on_right_crossbar = False  # Håller reda på om bollen redan är på höger ribba
     def apply_force(self, force_x, force_y, hitter='player'):
-        if self.is_frozen: return
-        self.vx += force_x; self.vy += force_y; self.last_hit_by = hitter
+        # If frozen, accumulate force instead of applying directly
+        if self.is_frozen:
+             # Reduce the force being accumulated (Now by 80%)
+             accum_force_x = force_x * 0.2
+             accum_force_y = force_y * 0.2
+             
+             max_accum_vel = 1500 # Keep the overall limit
+             new_accum_vx = self.accumulated_vx + accum_force_x # Use reduced force
+             new_accum_vy = self.accumulated_vy + accum_force_y # Use reduced force
+             
+             # Clamp individual components
+             self.accumulated_vx = max(-max_accum_vel, min(max_accum_vel, new_accum_vx))
+             self.accumulated_vy = max(-max_accum_vel, min(max_accum_vel, new_accum_vy))
+             
+             # Optionally, clamp the magnitude of the accumulated velocity vector
+             accum_mag_sq = self.accumulated_vx**2 + self.accumulated_vy**2
+             if accum_mag_sq > max_accum_vel**2:
+                 scale_factor = max_accum_vel / math.sqrt(accum_mag_sq)
+                 self.accumulated_vx *= scale_factor
+                 self.accumulated_vy *= scale_factor
+                 
+             print(f"Frozen ball hit! Accumulated momentum: vx={self.accumulated_vx:.1f}, vy={self.accumulated_vy:.1f}")
+        else:
+             self.vx += force_x
+             self.vy += force_y
+             self.last_hit_by = hitter
     def update(self, dt):
         if debug_mode and dt > 0:  # Add debug output for ball height
             screen_height_percent = ((SCREEN_HEIGHT - self.y) / SCREEN_HEIGHT) * 100
             print(f"Ball height: {SCREEN_HEIGHT - self.y:.1f} ({screen_height_percent:.1f}% of screen)")
             
         if self.freeze_effect_timer > 0: self.freeze_effect_timer -= dt
-        if self.is_frozen: return False
+        if self.is_frozen: return False # Don't update position if frozen
         
         # Get weather effects for current weather
         weather_effect = WEATHER_EFFECTS.get(current_weather, WEATHER_EFFECTS["SUNNY"])
@@ -1821,6 +1847,45 @@ class Ball:
             pygame.draw.circle(temp_surf, freeze_color, (shield_radius, shield_radius), shield_radius)
             pygame.draw.circle(temp_surf, (230, 240, 255, alpha // 2), (shield_radius, shield_radius), shield_radius, 1)
             screen.blit(temp_surf, (int(self.x - shield_radius), int(self.y - shield_radius)))
+
+        # --- Draw Accumulated Momentum Arrow (No longer debug only) ---
+        if self.is_frozen and (self.accumulated_vx != 0 or self.accumulated_vy != 0): # Removed debug_mode check
+            # Calculate magnitude and angle of accumulated momentum
+            magnitude = math.sqrt(self.accumulated_vx**2 + self.accumulated_vy**2)
+            if magnitude > 0: 
+                angle = math.atan2(self.accumulated_vy, self.accumulated_vx)
+
+                # Scale arrow length based on magnitude (More dramatic scaling)
+                min_arrow_len = 10  # Lower min length
+                max_arrow_len = 200 # Higher max length
+                scale_factor = 0.2  # Increased scale factor
+                arrow_length = min(max_arrow_len, max(min_arrow_len, magnitude * scale_factor))
+
+                # Calculate arrow end point
+                end_x = self.x + arrow_length * math.cos(angle)
+                end_y = self.y + arrow_length * math.sin(angle)
+
+                # Draw the arrow line (thicker for more power)
+                arrow_color = YELLOW
+                line_thickness = max(1, min(5, int(magnitude / 300))) 
+                pygame.draw.line(screen, arrow_color, center_tuple, (int(end_x), int(end_y)), line_thickness)
+
+                # Optional: Draw a small arrowhead
+                arrowhead_size = 10 # Slightly larger arrowhead
+                arrowhead_angle_offset = math.pi / 6 
+                
+                p1_x = end_x - arrowhead_size * math.cos(angle + arrowhead_angle_offset)
+                p1_y = end_y - arrowhead_size * math.sin(angle + arrowhead_angle_offset)
+                p2_x = end_x - arrowhead_size * math.cos(angle - arrowhead_angle_offset)
+                p2_y = end_y - arrowhead_size * math.sin(angle - arrowhead_angle_offset)
+                
+                arrowhead_points = [
+                    (int(end_x), int(end_y)), 
+                    (int(p1_x), int(p1_y)), 
+                    (int(p2_x), int(p2_y))
+                ]
+                pygame.draw.polygon(screen, arrow_color, arrowhead_points)
+
 
 # --- Game Setup ---
 pygame.init(); pygame.mixer.pre_init(44100, -16, 2, 512); pygame.mixer.init(channels=16) # Request 16 channels
@@ -2436,6 +2501,19 @@ while running:
                     print(f"Powerup spawned: SWORD at ({new_powerup.x:.0f}, {new_powerup.y:.0f})")
                 else:
                     print("DEBUG: Match inactive, cannot spawn SWORD.")
+            elif event.key == pygame.K_3: # New debug key for BALL_FREEZE
+                if match_active:
+                    print("DEBUG: Spawning BALL_FREEZE powerup.")
+                    new_powerup = ParachutePowerup()
+                    new_powerup.active = True
+                    new_powerup.powerup_type = "BALL_FREEZE"
+                    new_powerup.x = random.randint(GOAL_MARGIN_X + 50, SCREEN_WIDTH - GOAL_MARGIN_X - 50)
+                    new_powerup.y = -new_powerup.chute_radius * 2
+                    new_powerup.vx = random.uniform(-POWERUP_DRIFT_SPEED, POWERUP_DRIFT_SPEED)
+                    active_powerups.append(new_powerup)
+                    print(f"Powerup spawned: BALL_FREEZE at ({new_powerup.x:.0f}, {new_powerup.y:.0f})")
+                else:
+                    print("DEBUG: Match inactive, cannot spawn BALL_FREEZE.")
             elif event.key == pygame.K_r: 
                 if current_game_state == "WELCOME": # Check game state
                     current_game_state = "PLAYING" # Change game state
@@ -2574,7 +2652,34 @@ while running:
     if ball_freeze_timer > 0: # ... (unchanged) ...
         ball_freeze_timer -= dt
         if ball_freeze_timer <= 0:
-            ball.is_frozen = False; ball.freeze_effect_timer = POWERUP_BALL_FREEZE_DURATION * 0.1 ; print("Ball un-frozen")
+            # --- Apply Accumulated Momentum on Thaw ---
+            if ball.is_frozen: # Apply only if it was frozen
+                print(f"Ball un-frozen! Applying accumulated momentum: vx={ball.accumulated_vx:.1f}, vy={ball.accumulated_vy:.1f}")
+                # Limit the applied momentum magnitude if needed
+                max_release_vel = 2000 # Maximum velocity after release
+                current_mag_sq = ball.vx**2 + ball.vy**2
+                release_vx = ball.vx + ball.accumulated_vx
+                release_vy = ball.vy + ball.accumulated_vy
+                release_mag_sq = release_vx**2 + release_vy**2
+
+                if release_mag_sq > max_release_vel**2:
+                     scale_factor = max_release_vel / math.sqrt(release_mag_sq)
+                     ball.vx = release_vx * scale_factor
+                     ball.vy = release_vy * scale_factor
+                else:
+                    ball.vx = release_vx
+                    ball.vy = release_vy
+                
+                ball.accumulated_vx = 0.0 # Reset accumulated momentum
+                ball.accumulated_vy = 0.0
+                ball.is_frozen = False
+                ball.freeze_effect_timer = POWERUP_BALL_FREEZE_DURATION * 0.1 # Visual effect timer
+            else:
+                # If timer ran out but ball wasn't technically frozen (e.g., timer reset)
+                ball.is_frozen = False 
+                ball.freeze_effect_timer = 0.0
+                ball.accumulated_vx = 0.0 
+                ball.accumulated_vy = 0.0
     if p1_shield_timer > 0: # ... (unchanged) ...
         p1_shield_timer -= dt
         if p1_shield_timer <= 0: p1_shield_active = False; print("P1 Shield down")

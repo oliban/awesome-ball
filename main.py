@@ -125,12 +125,12 @@ WEATHER_EFFECTS = {
     "GOTHENBURG_WEATHER": {"gravity": 1.1, "background_color": (90, 110, 130), "wind_force": 22.0, "wind_angle": math.pi * 0.85} # Heavy rain, strong side/up wind
 }
 WEATHER_PARTICLE_COUNT = {
-    "SUNNY": 5,
-    "RAINY": 40,
-    "WINDY": 15,
-    "SNOWY": 20,
+    "SUNNY": 0,  # Var 5
+    "RAINY": 0,  # Var 40
+    "WINDY": 0,  # Var 15
+    "SNOWY": 0,  # Var 20
     "FOGGY": 0,
-    "GOTHENBURG_WEATHER": 70 # Heavy rain
+    "GOTHENBURG_WEATHER": 0 # Var 70
 }
 WEATHER_WIND_DIRECTION = 1  # 1 = right, -1 = left (for WINDY weather)
 WEATHER_WIND_CHANGE_TIMER = 0  # Timer for wind direction changes

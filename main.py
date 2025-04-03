@@ -510,7 +510,7 @@ class Particle: # ... (no change) ...
         self.lifespan -= dt;
         if self.start_life > 0: life_ratio = max(0, self.lifespan / self.start_life); current_size_base = SMOKE_PARTICLE_SIZE if self.p_type == 'smoke' else PARTICLE_SIZE; self.size = current_size_base * life_ratio
         else: self.size = 0
-        return self.lifespan > 0 and self.size > 0.5
+        return self.lifespan > 0 and self.size > 0
     def draw(self, screen):
         if self.size > 0:
             if self.p_type == 'smoke':

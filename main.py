@@ -113,6 +113,8 @@ SMOKE_EMISSION_RATE = 2
 debug_mode = False
 DEBUG_BG_COLOR = (220, 180, 255)
 DEBUG_MATCH_POINT_LIMIT = 1
+DEBUG_VERSION = 1 # <<< ADD VERSION
+BUILD_TIMESTAMP = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") # <<< ADD TIMESTAMP
 
 # --- Weather Effect Constants ---
 WEATHER_TYPES = ["SUNNY", "RAINY", "WINDY", "SNOWY", "FOGGY", "GOTHENBURG_WEATHER"]
@@ -3273,6 +3275,26 @@ while running:
         # Debug info
     if debug_mode:
             pass  # Add any additional debug info here
+
+    # Draw Version and Timestamp (Always visible)
+    debug_font = font_small # Use the small font
+    version_text = f"Debug Version: {DEBUG_VERSION}"
+    timestamp_text = f"Build: {BUILD_TIMESTAMP}"
+    version_surf = debug_font.render(version_text, True, WHITE)
+    timestamp_surf = debug_font.render(timestamp_text, True, WHITE)
+    version_rect = version_surf.get_rect(bottomleft=(10, SCREEN_HEIGHT - 10))
+    timestamp_rect = timestamp_surf.get_rect(bottomleft=(10, SCREEN_HEIGHT - 10 - version_rect.height - 2))
+
+    # Optional: Add background for readability
+    combined_height = version_rect.height + timestamp_rect.height + 4
+    max_width = max(version_rect.width, timestamp_rect.width) + 20
+    bg_debug_rect = pygame.Rect(5, SCREEN_HEIGHT - 5 - combined_height, max_width, combined_height)
+    bg_debug_surf = pygame.Surface(bg_debug_rect.size, pygame.SRCALPHA)
+    bg_debug_surf.fill((0, 0, 0, 150))
+    screen.blit(bg_debug_surf, bg_debug_rect.topleft)
+
+    screen.blit(timestamp_surf, timestamp_rect)
+    screen.blit(version_surf, version_rect)
 
     # Draw FPS Counter (Moved to correct location before flip)
     if current_game_state == "PLAYING" and debug_mode: # Only draw FPS during gameplay AND in debug mode

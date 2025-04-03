@@ -113,7 +113,7 @@ SMOKE_EMISSION_RATE = 2
 debug_mode = False
 DEBUG_BG_COLOR = (220, 180, 255)
 DEBUG_MATCH_POINT_LIMIT = 1
-DEBUG_VERSION = 4 # <<< Increment version to 4
+DEBUG_VERSION = 5 # <<< Increment version to 5
 BUILD_TIMESTAMP = datetime.now().strftime("%Y-%m-%d %H:%M:%S") # <<< FIX: Remove redundant datetime.
 
 # --- Weather Effect Constants ---
@@ -1811,24 +1811,8 @@ class Ball:
         return hit_ground
     def is_on_ground(self): return self.y + self.radius >= GROUND_Y - 0.5
     def draw(self, screen):
-        # --- Simple Circle Drawing for Performance Test ---
-        center_tuple = (int(self.x), int(self.y));
-        pygame.draw.circle(screen, WHITE, center_tuple, self.radius)
-        pygame.draw.circle(screen, BLACK, center_tuple, self.radius, 1) # Outline
-        # Draw freeze effect overlay if active (Keep this minimal effect)
-        if self.is_frozen or self.freeze_effect_timer > 0:
-            alpha = 220
-            if self.freeze_effect_timer > 0 and not self.is_frozen: alpha = int(220 * (self.freeze_effect_timer / (POWERUP_BALL_FREEZE_DURATION * 0.1)))
-            freeze_color = (173, 216, 230, max(0, min(255, alpha)))
-            shield_radius = self.radius + 3
-            temp_surf = pygame.Surface((shield_radius * 2, shield_radius * 2), pygame.SRCALPHA)
-            pygame.draw.circle(temp_surf, freeze_color, (shield_radius, shield_radius), shield_radius)
-            screen.blit(temp_surf, (int(self.x - shield_radius), int(self.y - shield_radius)))
-        return # <<< EXIT EARLY
-        # --- END Simple Circle Drawing ---
-        
-        # --- Original Pattern Drawing Logic (Commented out) ---
-        '''
+        # --- Restore Original Pattern Drawing Logic ---
+        # Remove the simple drawing code block and the triple quotes around original code
         center_tuple = (int(self.x), int(self.y));
         # Base ball draw
         pygame.draw.circle(screen, WHITE, center_tuple, self.radius)
@@ -1874,8 +1858,6 @@ class Ball:
                 pygame.draw.polygon(arrow_surf, arrow_color, [p1, p2, p3])
                 screen.blit(arrow_surf, (0,0))
             except ValueError: pass # Avoid potential errors with invalid points
-        '''
-
 
 # --- Game Setup ---
 pygame.init(); pygame.mixer.pre_init(44100, -16, 2, 512); pygame.mixer.init(channels=16) # Request 16 channels

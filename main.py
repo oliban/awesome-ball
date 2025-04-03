@@ -113,7 +113,7 @@ SMOKE_EMISSION_RATE = 2
 debug_mode = False
 DEBUG_BG_COLOR = (220, 180, 255)
 DEBUG_MATCH_POINT_LIMIT = 1
-DEBUG_VERSION = 1 # <<< ADD VERSION
+DEBUG_VERSION = 2 # <<< Increment version to 2
 BUILD_TIMESTAMP = datetime.now().strftime("%Y-%m-%d %H:%M:%S") # <<< FIX: Remove redundant datetime.
 
 # --- Weather Effect Constants ---
@@ -1408,85 +1408,101 @@ class StickMan: # Updated powerup dict/handling
         return (tip_x, tip_y, hand_pos[0], hand_pos[1], self.sword_angle)
         
     def draw(self, screen): # ... (no change) ...
-        all_points = [self.head_pos, self.neck_pos, self.hip_pos, self.shoulder_pos, self.l_elbow_pos, self.r_elbow_pos, self.l_hand_pos, self.r_hand_pos, self.l_knee_pos, self.r_knee_pos, self.l_foot_pos, self.r_foot_pos]
-        if "ROCKET_LAUNCHER" in self.active_powerups: all_points.append(self.gun_tip_pos)
+        # --- Simple Rectangle Drawing for Performance Test ---
+        simple_rect = pygame.Rect(0, 0, self.width, self.height)
+        simple_rect.centerx = int(self.x)
+        simple_rect.bottom = int(self.y)
+        pygame.draw.rect(screen, self.team_color, simple_rect)
+        pygame.draw.rect(screen, BLACK, simple_rect, 2)
+        # Draw Stun Indicator (even on simple mode)
+        if self.is_stunned:
+            stun_font = pygame.font.Font(None, int(30 * (self.head_radius / self.base_head_radius)))
+            stun_text = "Zzz"
+            stun_color = (60, 60, 150)
+            offset_y = math.sin(pygame.time.get_ticks() * 0.01) * 3
+            stun_surf = stun_font.render(stun_text, True, stun_color)
+            # Position relative to the simple rect
+            stun_rect = stun_surf.get_rect(centerx=simple_rect.centerx, 
+                                           bottom=simple_rect.top - 10 + offset_y) 
+            screen.blit(stun_surf, stun_rect)
+        return # <<< EXIT EARLY - Skip detailed drawing
+        # --- END Simple Rectangle Drawing ---
         
-        # Add sword tip point to all_points if the player has a sword
-        if self.is_sword:
-            sword_data = self.get_sword_position()
-            if sword_data:
-                tip_x, tip_y, base_x, base_y, angle = sword_data
-                all_points.append((tip_x, tip_y))  # Add sword tip to points
-                
-                # Add more points around the sword to ensure proper rendering
-                sword_len = self.torso_length * SWORD_LENGTH_FACTOR
-                sword_width = self.limb_width * SWORD_WIDTH_FACTOR
-                
-                # Calculate points at the edges of the sword for proper bounding box
-                perp_x = math.cos(angle + math.pi/2) * sword_width
-                perp_y = math.sin(angle + math.pi/2) * sword_width
-                
-                # Add edges of the sword
-                all_points.append((tip_x + perp_x, tip_y + perp_y))
-                all_points.append((tip_x - perp_x, tip_y - perp_y))
-                all_points.append((base_x + perp_x, base_y + perp_y))
-                all_points.append((base_x - perp_x, base_y - perp_y))
-        
-        min_x = min(p[0] for p in all_points) - self.head_radius - self.limb_width; max_x = max(p[0] for p in all_points) + self.head_radius + self.limb_width
-        min_y = min(p[1] for p in all_points) - self.head_radius - self.limb_width; max_y = max(p[1] for p in all_points) + self.head_radius + self.limb_width
-        if "FLIGHT" in self.active_powerups:
-             min_x = min(min_x, self.shoulder_pos[0] - self.wing_upper_lobe_size[0] - 10); max_x = max(max_x, self.shoulder_pos[0] + self.wing_upper_lobe_size[0] + 10)
-             min_y = min(min_y, self.shoulder_pos[1] - self.wing_upper_lobe_size[1] - 10); max_y = max(max_y, self.hip_pos[1] + self.wing_lower_lobe_size[1] + 10)
-        surf_width = max(1, int(max_x - min_x)); surf_height = max(1, int(max_y - min_y))
-        temp_surf = pygame.Surface((surf_width, surf_height), pygame.SRCALPHA)
-        offset_x = -min_x; offset_y = -min_y
-        def offset_pos(pos): return (pos[0] + offset_x, pos[1] + offset_y)
-        head_center_int = offset_pos(self.head_pos)
-        cap_height = self.head_radius * 0.8; cap_width = self.head_radius * 1.8; cap_rect = pygame.Rect(0, 0, cap_width, cap_height); cap_rect.center = (head_center_int[0], head_center_int[1] - self.head_radius * 0.5); pygame.draw.ellipse(temp_surf, self.cap_color, cap_rect)
-        brim_width = self.head_radius * 1.2; brim_height = self.head_radius * 0.4; brim_x = head_center_int[0] + (self.head_radius * 0.5) * self.facing_direction; brim_y = cap_rect.centery + cap_height * 0.1; brim_rect = pygame.Rect(0, 0, brim_width, brim_height); brim_rect.center = (brim_x, brim_y); pygame.draw.rect(temp_surf, self.cap_brim_color, brim_rect)
-        pygame.draw.circle(temp_surf, ITALY_WHITE, head_center_int, int(self.head_radius), 0)
-        eye_offset_x = self.head_radius * 0.35 * self.facing_direction; eye_offset_y = -self.head_radius * 0.1; eye_radius = int(max(1, 3 * (self.head_radius / self.base_head_radius)))
-        eye_pos_x = int(head_center_int[0] + eye_offset_x); eye_y = int(head_center_int[1] + eye_offset_y)
-        pygame.draw.circle(temp_surf, self.eye_color, (eye_pos_x, eye_y - eye_radius // 2 - 1), eye_radius); pygame.draw.circle(temp_surf, self.eye_color, (eye_pos_x, eye_y + eye_radius // 2 + 1), eye_radius)
-        nose_tip_x = head_center_int[0] + (self.head_radius * 0.5 + self.current_nose_length) * self.facing_direction; nose_tip_y = head_center_int[1] + self.head_radius * 0.1
-        nose_base_x = head_center_int[0] + (self.head_radius * 0.3) * self.facing_direction; nose_base_y1 = nose_tip_y - self.current_nose_width / 2; nose_base_y2 = nose_tip_y + self.current_nose_width / 2
-        nose_points = [(int(nose_base_x), int(nose_base_y1)), (int(nose_tip_x), int(nose_tip_y)), (int(nose_base_x), int(nose_base_y2))]; pygame.draw.polygon(temp_surf, NOSE_COLOR, nose_points)
-        pygame.draw.circle(temp_surf, BLACK, head_center_int, int(self.head_radius), 1)
-        torso_start_pos = offset_pos(self.neck_pos); torso_segment_height = self.torso_length / 3; current_torso_y = torso_start_pos[1]
-        for i in range(3): rect_center_x = torso_start_pos[0]; rect_center_y = current_torso_y + torso_segment_height / 2; draw_rotated_rectangle(temp_surf, self.torso_colors[i], (rect_center_x, rect_center_y), self.limb_width, torso_segment_height, 0); current_torso_y += torso_segment_height
+        # --- Original Detailed Drawing Logic (Commented out below) ---
+        '''
+        min_x = float('inf'); max_x = float('-inf')
+        min_y = float('inf'); max_y = float('-inf')
+        for pos in [self.hip_pos, self.neck_pos, self.head_pos, self.l_elbow_pos, self.l_hand_pos, self.r_elbow_pos, self.r_hand_pos, self.l_knee_pos, self.l_foot_pos, self.r_knee_pos, self.r_foot_pos]:
+            if pos:
+                min_x = min(min_x, pos[0]); max_x = max(max_x, pos[0])
+                min_y = min(min_y, pos[1]); max_y = max(max_y, pos[1])
+        min_x -= self.head_radius; max_x += self.head_radius
+        min_y -= self.head_radius; max_y += self.head_radius
+        render_width = max(int(max_x - min_x), 1); render_height = max(int(max_y - min_y), 1);
+        offset_x = min_x; offset_y = min_y
+        temp_surf = pygame.Surface((render_width, render_height), pygame.SRCALPHA)
+        def offset_pos(pos): return (int(pos[0] - offset_x), int(pos[1] - offset_y))
         def draw_limb_segment_offset(start_pos, end_pos, length, color, limb_w):
-            o_start = offset_pos(start_pos); o_end = offset_pos(end_pos); center_x = (o_start[0] + o_end[0]) / 2; center_y = (o_start[1] + o_end[1]) / 2
-            dx = o_end[0] - o_start[0]; dy = o_end[1] - o_start[1]; draw_length = math.hypot(dx, dy);
-            if draw_length < 1: draw_length = 1
-            angle = math.atan2(dy, dx); draw_rotated_rectangle(temp_surf, color, (center_x, center_y), draw_length, limb_w, angle + math.pi/2)
-        draw_limb_segment_offset(self.shoulder_pos, self.l_elbow_pos, self.upper_arm_length, self.arm_colors[0], self.limb_width); draw_limb_segment_offset(self.l_elbow_pos, self.l_hand_pos, self.forearm_length, self.arm_colors[1], self.limb_width)
-        draw_limb_segment_offset(self.shoulder_pos, self.r_elbow_pos, self.upper_arm_length, self.arm_colors[0], self.limb_width); draw_limb_segment_offset(self.r_elbow_pos, self.r_hand_pos, self.forearm_length, self.arm_colors[1], self.limb_width)
-        draw_limb_segment_offset(self.hip_pos, self.l_knee_pos, self.thigh_length, self.leg_colors[0], self.limb_width); draw_limb_segment_offset(self.l_knee_pos, self.l_foot_pos, self.shin_length, self.leg_colors[1], self.limb_width)
-        draw_limb_segment_offset(self.hip_pos, self.r_knee_pos, self.thigh_length, self.leg_colors[0], self.limb_width); draw_limb_segment_offset(self.r_knee_pos, self.r_foot_pos, self.shin_length, self.leg_colors[1], self.limb_width)
-        if "FLIGHT" in self.active_powerups:
-             o_shoulder_pos = offset_pos(self.shoulder_pos); o_hip_pos = offset_pos(self.hip_pos)
-             upper_attach_x = o_shoulder_pos[0]; upper_attach_y = o_shoulder_pos[1] + 5; lower_attach_x = o_hip_pos[0]; lower_attach_y = o_hip_pos[1] - 5
-             upper_length = self.wing_upper_lobe_size[0]; upper_width = self.wing_upper_lobe_size[1]; lower_length = self.wing_lower_lobe_size[0]; lower_width = self.wing_lower_lobe_size[1]
-             def create_wing_poly_offset(attach_point, angle, length, width):
-                cos_a = math.cos(angle); sin_a = math.sin(angle); cos_w = math.cos(angle + math.pi/2); sin_w = math.sin(angle + math.pi/2)
-                p1 = attach_point; p2 = (attach_point[0] + length * 0.6 * cos_a + width * 0.5 * cos_w, attach_point[1] + length * 0.6 * sin_a + width * 0.5 * sin_w)
-                p3 = (attach_point[0] + length * cos_a, attach_point[1] + length * sin_a); p4 = (attach_point[0] + length * 0.6 * cos_a - width * 0.5 * cos_w, attach_point[1] + length * 0.6 * sin_a - width * 0.5 * sin_w)
-                p5 = (attach_point[0] + length*0.2 * cos_a - width*0.2 * cos_w, attach_point[1] + length*0.2 * sin_a - width*0.2 * sin_w)
-                return [(int(p[0]), int(p[1])) for p in [p1, p2, p3, p4, p5]]
-             l_attach_upper = (upper_attach_x - 4, upper_attach_y); l_attach_lower = (lower_attach_x - 4, lower_attach_y); l_upper_poly = create_wing_poly_offset(l_attach_upper, self.l_wing_upper_angle, upper_length, upper_width)
-             l_lower_poly = create_wing_poly_offset(l_attach_lower, self.l_wing_lower_angle, lower_length, lower_width); pygame.draw.polygon(temp_surf, self.wing_color, l_upper_poly); pygame.draw.polygon(temp_surf, self.wing_outline_color, l_upper_poly, 1)
-             pygame.draw.polygon(temp_surf, self.wing_color, l_lower_poly); pygame.draw.polygon(temp_surf, self.wing_outline_color, l_lower_poly, 1); r_attach_upper = (upper_attach_x + 4, upper_attach_y); r_attach_lower = (lower_attach_x + 4, lower_attach_y)
-             r_upper_poly = create_wing_poly_offset(r_attach_upper, self.r_wing_upper_angle, upper_length, upper_width); r_lower_poly = create_wing_poly_offset(r_attach_lower, self.r_wing_lower_angle, lower_length, lower_width)
-             pygame.draw.polygon(temp_surf, self.wing_color, r_upper_poly); pygame.draw.polygon(temp_surf, self.wing_outline_color, r_upper_poly, 1); pygame.draw.polygon(temp_surf, self.wing_color, r_lower_poly); pygame.draw.polygon(temp_surf, self.wing_outline_color, r_lower_poly, 1)
+            if not start_pos or not end_pos: return
+            offset_start = offset_pos(start_pos); offset_end = offset_pos(end_pos)
+            try: pygame.draw.line(temp_surf, color, offset_start, offset_end, int(limb_w))
+            except ValueError: pass
+        limb_width = max(1, int(self.limb_width))
+        head_radius = max(1, int(self.head_radius))
+        def create_wing_poly_offset(attach_point, angle, length, width):
+            if not attach_point: return []
+            offset_attach = offset_pos(attach_point); points = [offset_attach]
+            angle1 = angle - 0.5 * self.wing_angle; angle2 = angle + 0.5 * self.wing_angle; tip_angle = angle
+            points.append((offset_attach[0] + length * math.cos(angle1), offset_attach[1] + length * math.sin(angle1)))
+            points.append((offset_attach[0] + length * 1.2 * math.cos(tip_angle), offset_attach[1] + length * 1.2 * math.sin(tip_angle)))
+            points.append((offset_attach[0] + length * math.cos(angle2), offset_attach[1] + length * math.sin(angle2)))
+            return [(int(p[0]), int(p[1])) for p in points]
+        # Torso
+        draw_limb_segment_offset(self.hip_pos, self.neck_pos, self.torso_length, self.team_color, limb_width)
+        # Head
+        if self.head_pos: pygame.draw.circle(temp_surf, self.team_color, offset_pos(self.head_pos), head_radius)
+        # Arms
+        draw_limb_segment_offset(self.shoulder_pos, self.l_elbow_pos, self.upper_arm_length, self.team_color, limb_width)
+        draw_limb_segment_offset(self.l_elbow_pos, self.l_hand_pos, self.forearm_length, self.team_color, limb_width)
+        draw_limb_segment_offset(self.shoulder_pos, self.r_elbow_pos, self.upper_arm_length, self.team_color, limb_width)
+        draw_limb_segment_offset(self.r_elbow_pos, self.r_hand_pos, self.forearm_length, self.team_color, limb_width)
+        # Legs
+        draw_limb_segment_offset(self.hip_pos, self.l_knee_pos, self.thigh_length, self.team_color, limb_width)
+        draw_limb_segment_offset(self.l_knee_pos, self.l_foot_pos, self.shin_length, self.team_color, limb_width)
+        draw_limb_segment_offset(self.hip_pos, self.r_knee_pos, self.thigh_length, self.team_color, limb_width)
+        draw_limb_segment_offset(self.r_knee_pos, self.r_foot_pos, self.shin_length, self.team_color, limb_width)
+        # Accents
+        accent_radius = max(1, int(head_radius * 0.6)); nose_radius = max(1, int(head_radius * 0.15))
+        if self.head_pos: pygame.draw.circle(temp_surf, self.team_accent, offset_pos(self.head_pos), accent_radius, 2)
+        nose_offset_x = self.facing_direction * head_radius * 0.55; nose_offset_y = head_radius * 0.1
+        nose_pos = (self.head_pos[0] + nose_offset_x, self.head_pos[1] + nose_offset_y) if self.head_pos else None
+        if nose_pos: pygame.draw.circle(temp_surf, self.nose_color, offset_pos(nose_pos), nose_radius)
+        joint_radius = max(1, int(limb_width / 2))
+        for pos in [self.l_elbow_pos, self.r_elbow_pos, self.l_knee_pos, self.r_knee_pos]:
+            if pos: pygame.draw.circle(temp_surf, self.team_accent, offset_pos(pos), joint_radius)
+        foot_size = max(2, int(limb_width * 0.8))
+        for pos in [self.l_foot_pos, self.r_foot_pos]:
+            if pos: pygame.draw.circle(temp_surf, self.team_accent, offset_pos(pos), foot_size)
+        # Draw Wings if flying
+        if self.is_flying:
+            wing_color = (220, 220, 250, 150); wing_outline = (100, 100, 150)
+            wing_attach = ((self.hip_pos[0] + self.neck_pos[0]) / 2, (self.hip_pos[1] + self.neck_pos[1]) / 2) if self.hip_pos and self.neck_pos else None
+            if wing_attach:
+                l_wing_angle = -math.pi * 0.75 + self.wing_flap_angle; r_wing_angle = -math.pi * 0.25 - self.wing_flap_angle
+                l_wing_poly = create_wing_poly_offset(wing_attach, l_wing_angle, self.upper_arm_length * 1.8, self.upper_arm_length * 0.8)
+                r_wing_poly = create_wing_poly_offset(wing_attach, r_wing_angle, self.upper_arm_length * 1.8, self.upper_arm_length * 0.8)
+                if l_wing_poly: pygame.draw.polygon(temp_surf, wing_color, l_wing_poly); pygame.draw.polygon(temp_surf, wing_outline, l_wing_poly, 1)
+                if r_wing_poly: pygame.draw.polygon(temp_surf, wing_color, r_wing_poly); pygame.draw.polygon(temp_surf, wing_outline, r_wing_poly, 1)
+        # Draw Rocket Launcher if active
         if "ROCKET_LAUNCHER" in self.active_powerups:
-            o_shoulder_pos = offset_pos(self.shoulder_pos)
-            gun_attach_x = o_shoulder_pos[0] + 5 * self.facing_direction; gun_attach_y = o_shoulder_pos[1] + 10
-            base_angle = 0 if self.facing_direction == 1 else math.pi; gun_world_angle = base_angle + self.gun_angle_offset
-            gun_center_x = gun_attach_x + (GUN_SIZE[0] / 2) * math.cos(gun_world_angle); gun_center_y = gun_attach_y + (GUN_SIZE[0] / 2) * math.sin(gun_world_angle)
-            draw_rotated_rectangle(temp_surf, GUN_COLOR, (gun_center_x, gun_center_y), GUN_SIZE[0], GUN_SIZE[1], gun_world_angle)
-            world_gun_attach_x = self.shoulder_pos[0] + 5 * self.facing_direction; world_gun_attach_y = self.shoulder_pos[1] + 10
-            world_gun_center_x = world_gun_attach_x + (GUN_SIZE[0] / 2) * math.cos(gun_world_angle); world_gun_center_y = world_gun_attach_y + (GUN_SIZE[0] / 2) * math.sin(gun_world_angle)
-            tip_offset = GUN_SIZE[0] / 2; self.gun_tip_pos = (world_gun_center_x + tip_offset * math.cos(gun_world_angle), world_gun_center_y + tip_offset * math.sin(gun_world_angle))
+            gun_angle = 0 if self.facing_direction == 1 else math.pi; gun_angle += self.gun_angle_offset
+            draw_rotated_rectangle(temp_surf, GUN_COLOR, offset_pos(self.gun_pos), GUN_SIZE[0], GUN_SIZE[1], gun_angle)
+        # Draw Sword if active
+        if self.is_sword:
+            sword_pos_data = self.get_sword_position()
+            if sword_pos_data:
+                tip_x, tip_y, base_x, base_y, angle = sword_pos_data
+                pygame.draw.line(temp_surf, SWORD_COLOR, offset_pos((base_x, base_y)), offset_pos((tip_x, tip_y)), max(1, int(self.limb_width * SWORD_WIDTH_FACTOR)))
         if self.is_tumbling and self.rotation_angle != 0:
             rotated_surf = pygame.transform.rotate(temp_surf, -math.degrees(self.rotation_angle))
             blit_rect = rotated_surf.get_rect(center = offset_pos(self.hip_pos))
@@ -1517,123 +1533,7 @@ class StickMan: # Updated powerup dict/handling
             stun_rect = stun_surf.get_rect(centerx=int(self.head_pos[0]), 
                                            bottom=int(self.head_pos[1] - self.head_radius - 10 + offset_y))
             screen.blit(stun_surf, stun_rect)
-
-        # --- Draw Sword --- # Added
-        if self.is_sword:
-            print(f"Drawing sword for player {1 if self.facing_direction == 1 else 2}") if debug_mode else None
-            hand_pos = self.r_hand_pos if self.facing_direction == 1 else self.l_hand_pos
-            o_hand_pos = offset_pos(hand_pos)
-            # REMOVED local constant definitions - Use global ones
-            sword_len = self.torso_length * SWORD_LENGTH_FACTOR
-            sword_width = self.limb_width * SWORD_WIDTH_FACTOR
-            hilt_length = sword_width * 3 # Relative to sword width
-            hilt_width = sword_width * 3 # Hilt crossguard width
-            
-            # Determine sword angle based on kick animation or default holding angle
-            kick_progress = 0.0
-            if self.is_kicking:
-                # Ensure kick_duration is not zero to avoid division error
-                if self.kick_duration > 0:
-                    kick_progress = min(self.kick_timer / self.kick_duration, 1.0)
-                else:
-                    kick_progress = 1.0 # Or 0.0, depending on desired end state
-
-                windup_end = 0.20; impact_start = 0.25; impact_end = 0.50; follow_end = 1.0
-                if kick_progress < impact_start: # Windup
-                    swing_prog = kick_progress / impact_start if impact_start > 0 else 1.0
-                    base_angle_offset = -math.pi * 0.8 * (swing_prog**2)
-                elif kick_progress < follow_end: # Swing + Follow
-                    # Ensure denominator is not zero
-                    duration_follow = follow_end - impact_start
-                    follow_prog = (kick_progress - impact_start) / duration_follow if duration_follow > 0 else 1.0
-
-                    max_forward_angle = math.pi * 0.3
-                    if follow_prog < 0.5:
-                       ease_in_swing = (follow_prog * 2)**1.5
-                       base_angle_offset = -math.pi*0.8 + (max_forward_angle - (-math.pi*0.8)) * ease_in_swing
-                    else:
-                       ease_out_follow = 1.0 - ((follow_prog - 0.5) * 2)**1.5
-                       base_angle_offset = max_forward_angle * ease_out_follow
-                else: # End of kick
-                     base_angle_offset = 0
-            else: # Idle holding angle
-                base_angle_offset = -math.pi / 4
-
-            # Set the angle for drawing and collision detection
-            # New simplified angle calculation:
-            # base_angle_offset is relative to forward horizontal (0 degrees)
-            if self.facing_direction == 1: # Facing right
-                self.sword_angle = base_angle_offset
-            else: # Facing left
-                # Mirror the angle around the vertical axis (pi radians)
-                self.sword_angle = math.pi - base_angle_offset
-
-            if debug_mode:
-                print(f"Sword angle: {self.sword_angle}, Hand pos: {hand_pos}, Offset hand: {o_hand_pos}")
-
-            # Play sword swing sound if kicking
-            # Removed duplicate sound playing since we now handle it in start_kick
-
-            # Draw the sword based on reference image
-            # Calculate coordinates in world space
-            sword_base_x = hand_pos[0]
-            sword_base_y = hand_pos[1]
-            
-            # Calculate blade coordinates
-            blade_length = sword_len * 1.2  # Make blade longer
-            blade_width = sword_width * 0.6  # Make blade thinner
-            blade_start_x = sword_base_x
-            blade_start_y = sword_base_y
-            blade_end_x = blade_start_x + blade_length * math.cos(self.sword_angle)
-            blade_end_y = blade_start_y + blade_length * math.sin(self.sword_angle)
-            blade_center_x = blade_start_x + (blade_length/2) * math.cos(self.sword_angle)
-            blade_center_y = blade_start_y + (blade_length/2) * math.sin(self.sword_angle)
-            
-            # Calculate crossguard coordinates (perpendicular to blade)
-            crossguard_angle = self.sword_angle + math.pi/2
-            crossguard_length = hilt_width * 2
-            crossguard_width = blade_width * 1.5
-            crossguard_center_x = sword_base_x
-            crossguard_center_y = sword_base_y
-            
-            # Calculate handle coordinates (opposite direction from blade)
-            handle_length = sword_len * 0.3
-            handle_width = blade_width * 0.8
-            handle_center_x = sword_base_x - (handle_length/2) * math.cos(self.sword_angle)
-            handle_center_y = sword_base_y - (handle_length/2) * math.sin(self.sword_angle)
-            
-            # Draw handle (dark brown)
-            draw_rotated_rectangle(screen, (101, 67, 33), 
-                                  (handle_center_x, handle_center_y), 
-                                  handle_length, handle_width, 
-                                  self.sword_angle)
-            
-            # Draw crossguard (metallic silver)
-            draw_rotated_rectangle(screen, (169, 169, 169), 
-                                  (crossguard_center_x, crossguard_center_y), 
-                                  crossguard_length, crossguard_width, 
-                                  crossguard_angle)
-            
-            # Draw blade (metallic silver with gradient)
-            # Main blade
-            draw_rotated_rectangle(screen, (192, 192, 192), 
-                                  (blade_center_x, blade_center_y), 
-                                  blade_length, blade_width, 
-                                  self.sword_angle)
-            
-            # Blade edge highlight
-            blade_edge_width = max(1, int(blade_width * 0.3))
-            pygame.draw.line(screen, (220, 220, 220), 
-                            (int(blade_start_x), int(blade_start_y)), 
-                            (int(blade_end_x), int(blade_end_y)), 
-                            blade_edge_width)
-            
-            # Blade tip highlight
-            pygame.draw.circle(screen, (220, 220, 220), 
-                              (int(blade_end_x), int(blade_end_y)), 
-                              int(blade_width * 0.4))
-
-        # --- Tumble Rotation and Blitting ---
+        '''
 
     def update_limbs(self, dt, is_walking):
         # Limb Angle Calculations based on state (walking, jumping, kicking, tumbling)

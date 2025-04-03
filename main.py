@@ -2893,45 +2893,46 @@ while running:
     draw_scoreboard(screen, player1_score, player2_score, p1_games_won, p2_games_won, font_large, font_medium, font_small, goal_message_timer > 0 or match_over_timer > 0)
     draw_game_scores(screen, game_scores, font_small)
     
-    # Draw weather info
-    weather_font = font_small
-    weather_label = f"Weather: {current_weather.replace('_', ' ').title()}"
-    weather_effect = WEATHER_EFFECTS.get(current_weather, {})
-    effects_text = []
-    
-    if "gravity" in weather_effect and weather_effect["gravity"] != 1.0:
-        if weather_effect["gravity"] < 1.0: effects_text.append("Low gravity")
-        else: effects_text.append("High gravity")
-            
-    if current_weather == "WINDY":
-        direction = "→" if WEATHER_WIND_DIRECTION > 0 else "←"
-        effects_text.append(f"Wind {direction} ({CURRENT_WIND_FORCE:.0f})")
-    elif current_weather == "GOTHENBURG_WEATHER":
-        effects_text.append(f"Wind ↗ ({weather_effect.get('wind_force', 0.0):.0f})") # Indicate direction
+    # Draw weather info (Only in debug mode)
+    if debug_mode:
+        weather_font = font_small
+        weather_label = f"Weather: {current_weather.replace('_', ' ').title()}"
+        weather_effect = WEATHER_EFFECTS.get(current_weather, {})
+        effects_text = []
         
-    if current_weather == "FOGGY": effects_text.append("Low visibility")
-    
-    effects_str = ", ".join(effects_text) if effects_text else "Normal"
-    weather_text = f"{weather_label} [{effects_str}]"
-    
-    weather_color = {
-        "SUNNY": (255, 200, 0),
-        "RAINY": (100, 140, 255),
-        "WINDY": (200, 200, 200),
-        "SNOWY": (220, 240, 255),
-        "FOGGY": (180, 180, 180),
-        "GOTHENBURG_WEATHER": (120, 150, 200)
-    }.get(current_weather, WHITE)
-    
-    weather_surf = weather_font.render(weather_text, True, weather_color)
-    weather_rect = weather_surf.get_rect(top=10, right=SCREEN_WIDTH - 10)
-    
-    # Add background to make text readable
-    weather_bg = weather_rect.inflate(10, 6)
-    weather_bg_surf = pygame.Surface(weather_bg.size, pygame.SRCALPHA)
-    weather_bg_surf.fill((0, 0, 0, 150))
-    screen.blit(weather_bg_surf, weather_bg.topleft)
-    screen.blit(weather_surf, weather_rect)
+        if "gravity" in weather_effect and weather_effect["gravity"] != 1.0:
+            if weather_effect["gravity"] < 1.0: effects_text.append("Low gravity")
+            else: effects_text.append("High gravity")
+                
+        if current_weather == "WINDY":
+            direction = "→" if WEATHER_WIND_DIRECTION > 0 else "←"
+            effects_text.append(f"Wind {direction} ({CURRENT_WIND_FORCE:.0f})")
+        elif current_weather == "GOTHENBURG_WEATHER":
+            effects_text.append(f"Wind ↗ ({weather_effect.get('wind_force', 0.0):.0f})") # Indicate direction
+            
+        if current_weather == "FOGGY": effects_text.append("Low visibility")
+        
+        effects_str = ", ".join(effects_text) if effects_text else "Normal"
+        weather_text = f"{weather_label} [{effects_str}]"
+        
+        weather_color = {
+            "SUNNY": (255, 200, 0),
+            "RAINY": (100, 140, 255),
+            "WINDY": (200, 200, 200),
+            "SNOWY": (220, 240, 255),
+            "FOGGY": (180, 180, 180),
+            "GOTHENBURG_WEATHER": (120, 150, 200)
+        }.get(current_weather, WHITE)
+        
+        weather_surf = weather_font.render(weather_text, True, weather_color)
+        weather_rect = weather_surf.get_rect(top=10, right=SCREEN_WIDTH - 10)
+        
+        # Add background to make text readable
+        weather_bg = weather_rect.inflate(10, 6)
+        weather_bg_surf = pygame.Surface(weather_bg.size, pygame.SRCALPHA)
+        weather_bg_surf.fill((0, 0, 0, 150))
+        screen.blit(weather_bg_surf, weather_bg.topleft)
+        screen.blit(weather_surf, weather_rect)
     
     # Draw Weather Message (Added)
     if weather_message_timer > 0:
@@ -2986,13 +2987,9 @@ while running:
         # Draw transitioning background
         screen.fill(bg_color)
         
-        # Draw moon near the middle of the transition (peak night)
-        if 0.4 < transition_progress < 0.6:
-            moon_size = 30
-            moon_pos = (SCREEN_WIDTH - moon_size * 2, moon_size * 2)
-            moon_color = (255, 255, 220)
-            draw_moon(screen, moon_pos, moon_size, moon_color)
-        elif transition_progress >= 0.5 and next_time_of_day == "Night": # Also draw stars if next phase is night
+        # Draw stars if transitioning towards or during Night
+        if (transition_progress < 0.5 and start_time_of_day == "Night") or \
+           (transition_progress >= 0.5 and next_time_of_day == "Night"):
             star_color = (255, 255, 220)
             for x, y in STARS:
                 size = random.randint(1, 2)
@@ -3067,7 +3064,7 @@ while running:
             pass  # Add any additional debug info here
 
     # Draw FPS Counter (Moved to correct location before flip)
-    if current_game_state == "PLAYING": # Only draw FPS during gameplay
+    if current_game_state == "PLAYING" and debug_mode: # Only draw FPS during gameplay AND in debug mode
         fps_text = f"FPS: {last_fps:.0f}"
         fps_surf = font_fps.render(fps_text, True, WHITE)
         fps_rect = fps_surf.get_rect(bottomright=(SCREEN_WIDTH - 10, SCREEN_HEIGHT - 10))

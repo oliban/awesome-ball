@@ -114,7 +114,7 @@ debug_mode = False
 DEBUG_BG_COLOR = (220, 180, 255)
 DEBUG_MATCH_POINT_LIMIT = 1
 DEBUG_VERSION = 1 # <<< ADD VERSION
-BUILD_TIMESTAMP = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") # <<< ADD TIMESTAMP
+BUILD_TIMESTAMP = datetime.now().strftime("%Y-%m-%d %H:%M:%S") # <<< FIX: Remove redundant datetime.
 
 # --- Weather Effect Constants ---
 WEATHER_TYPES = ["SUNNY", "RAINY", "WINDY", "SNOWY", "FOGGY", "GOTHENBURG_WEATHER"]

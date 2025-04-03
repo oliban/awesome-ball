@@ -34,6 +34,12 @@ SCREEN_FLASH_COLOR = (255, 255, 255, 100)
 SCREEN_FLASH_DURATION = 0.15
 DEBUG_KICK_ANGLES = False
 
+# --- FPS / Performance ---
+TARGET_FPS = 60 # Add this definition
+LOW_FPS_THRESHOLD = 30 # FPS below which weather effects might be disabled
+PERFORMANCE_CHECK_DURATION = 2.0 # Seconds to monitor FPS at the start
+DISABLE_WEATHER_ON_LOW_FPS = True # Feature toggle
+
 # --- Pastel Colors for Powerups ---
 PASTEL_COLORS = [
     (255, 179, 186), # Light Pink
@@ -129,13 +135,6 @@ WEATHER_PARTICLE_COUNT = {
 WEATHER_WIND_DIRECTION = 1  # 1 = right, -1 = left (for WINDY weather)
 WEATHER_WIND_CHANGE_TIMER = 0  # Timer for wind direction changes
 CURRENT_WIND_FORCE = 0 # Current randomized wind force for WINDY weather
-
-# --- Weather Performance Tuning --- (Added)
-WEATHER_PARTICLE_SPAWN_INTERVAL = 0.05 # Time between spawning batches
-WEATHER_PARTICLE_BATCH_SIZE = 5      # Particles per batch
-FPS_LOW_THRESHOLD = 30               # FPS below this is considered low
-FPS_LOW_DURATION_THRESHOLD = 2.0     # How long FPS must be low to trigger fallback (seconds)
-WEATHER_STABILIZATION_TIME = 1.0     # Time after weather change before starting FPS check (seconds)
 
 # --- Weather Messages --- (Added)
 WEATHER_MESSAGES = {
@@ -510,7 +509,7 @@ class Particle: # ... (no change) ...
         self.lifespan -= dt;
         if self.start_life > 0: life_ratio = max(0, self.lifespan / self.start_life); current_size_base = SMOKE_PARTICLE_SIZE if self.p_type == 'smoke' else PARTICLE_SIZE; self.size = current_size_base * life_ratio
         else: self.size = 0
-        return self.lifespan > 0 and self.size > 0
+        return self.lifespan > 0 and self.size > 0.5
     def draw(self, screen):
         if self.size > 0:
             if self.p_type == 'smoke':
@@ -1967,6 +1966,7 @@ player_list = [player1, player2]
 ball = Ball(SCREEN_WIDTH // 2, GROUND_Y - 20, 15)
 font_large = pygame.font.Font(None, 50); font_medium = pygame.font.Font(None, 36); font_small = pygame.font.Font(None, 28)
 font_timestamp = pygame.font.Font(None, 20); font_goal = pygame.font.Font(None, 80)
+font_fps = pygame.font.Font(None, 24) # Font for FPS display (Definition added here)
 winner_images = {}
 try:
     winner_images[1] = pygame.image.load("images/nils_wins.png").convert_alpha()
@@ -1997,16 +1997,16 @@ p1_goal_enlarged_timer = 0.0
 p2_goal_enlarged_timer = 0.0
 weather_message_text = ""
 weather_message_timer = 0.0
+total_game_time = 0.0
+fps_list = []
+performance_check_done = False
+weather_particles_enabled = True
+last_fps = 0.0 # Variable to store the last calculated FPS
 
 # --- Weather Variables ---
 current_weather = random.choice(WEATHER_TYPES)
 weather_particles = []
 weather_wind_change_timer = 15.0  # Time until wind direction changes
-weather_particles_to_spawn = [] # Queue for spawning particles gradually (Added)
-weather_particle_spawn_timer = 0.0 # Timer for spawning batches (Added)
-low_fps_timer = 0.0 # Timer for tracking low FPS duration (Added)
-weather_particles_disabled_for_current_match = False # Flag to disable particles if FPS is too low (Added)
-weather_change_timer = 0.0 # Timer since last weather change (Added)
 
 
 # --- Reset/Start Functions ---
@@ -2022,8 +2022,6 @@ def reset_positions(): # Keeps powerups active, resets player state only
     active_rockets = []; active_explosions = []
 def start_new_match(): # Full reset for new match
     global player1_score, player2_score, match_active, match_winner, match_over_timer, match_end_sound_played, announcement_queue, powerup_spawn_timer, active_powerups, ball_freeze_timer, p1_shield_active, p1_shield_timer, p2_shield_active, p2_shield_timer, jackpot_triggered_this_match, p1_goal_enlarged_timer, p2_goal_enlarged_timer, current_weather, weather_particles, weather_wind_change_timer, CURRENT_WIND_FORCE, WEATHER_WIND_DIRECTION, current_time_of_day, weather_message_text, weather_message_timer # Added message variables
-    # Added weather performance variables to reset
-    global weather_particles_to_spawn, weather_particle_spawn_timer, low_fps_timer, weather_particles_disabled_for_current_match, weather_change_timer
     player1_score = 0; player2_score = 0; match_active = True; match_winner = None; match_over_timer = 0.0; match_end_sound_played = False
     announcement_queue = []; reset_positions()
     player1.active_powerups = {}; player1.is_flying = False; player1.is_big = False; player1.is_shrunk = False; player1.is_enormous_head = False; player1.jump_power = BASE_JUMP_POWER; player1.player_speed = BASE_PLAYER_SPEED; player1.calculate_current_sizes()
@@ -2047,11 +2045,6 @@ def start_new_match(): # Full reset for new match
     # Set up new weather conditions for this match
     current_weather = random.choice(WEATHER_TYPES)
     weather_particles = []
-    weather_particles_to_spawn = [] # Clear spawn queue (Added)
-    weather_particle_spawn_timer = 0.0 # Reset spawn timer (Added)
-    low_fps_timer = 0.0 # Reset low FPS timer (Added)
-    weather_particles_disabled_for_current_match = False # Re-enable particles for new match (Added)
-    weather_change_timer = 0.0 # Reset weather change timer (Added)
     weather_wind_change_timer = 15.0
     CURRENT_WIND_FORCE = 0 # Reset current wind force
     WEATHER_WIND_DIRECTION = random.choice([-1, 1]) # Random initial direction for WINDY
@@ -2066,10 +2059,11 @@ def start_new_match(): # Full reset for new match
     else:
          print(f"Starting {current_weather} match.")
          
-     # Queue weather particles for spawning (MODIFIED)
-    total_particles_to_create = WEATHER_PARTICLE_COUNT.get(current_weather, 0)
-    weather_particles_to_spawn.extend([current_weather] * total_particles_to_create) # Add weather type strings to queue
-    print(f"Queued {total_particles_to_create} {current_weather} particles for spawning.")
+    # Create weather particles
+    for _ in range(WEATHER_PARTICLE_COUNT.get(current_weather, 0)):
+        weather_particles.append(WeatherParticle(current_weather, SCREEN_WIDTH, SCREEN_HEIGHT))
+    
+    print(f"Starting new match with {current_weather} weather.")
 
     # Select and set weather message (Added)
     possible_messages = WEATHER_MESSAGES.get(current_weather, [f"{current_weather.replace('_', ' ').title()} weather."])
@@ -2360,13 +2354,32 @@ start_new_game()
 
 # --- Main Game Loop ---
 running = True
-showing_welcome_screen = True  # Start with welcome screen
+current_game_state = "WELCOME" # Start with welcome screen
+
 
 while running:
-    dt = clock.tick(FPS) / 1000.0; dt = min(dt, 0.1)
+    dt = clock.tick(TARGET_FPS) / 1000.0 # Get delta time in seconds
+    if dt > 0.1: dt = 0.1 # Cap delta time to prevent physics glitches
+    total_game_time += dt
+    current_fps = clock.get_fps()
+    last_fps = current_fps # Store current FPS
 
-    # --- Global Input & Event Processing ---
-    # ... (event loop unchanged) ...
+    # --- Adaptive Performance Check (First few seconds) ---
+    if DISABLE_WEATHER_ON_LOW_FPS and not performance_check_done and current_game_state == "PLAYING":
+        if total_game_time < PERFORMANCE_CHECK_DURATION:
+            fps_list.append(current_fps)
+        else:
+            if fps_list: # Ensure list is not empty
+                avg_fps = sum(fps_list) / len(fps_list)
+                if avg_fps < LOW_FPS_THRESHOLD:
+                    print(f"Average FPS ({avg_fps:.1f}) below threshold ({LOW_FPS_THRESHOLD}). Disabling weather particles.")
+                    weather_particles_enabled = False
+                    weather_particles.clear() # Remove existing particles
+                else:
+                     print(f"Average FPS ({avg_fps:.1f}) is okay. Weather particles remain enabled.")
+            performance_check_done = True
+
+    # --- Event Handling ---
     events = pygame.event.get()
     for event in events:
         if event.type == pygame.QUIT: running = False
@@ -2381,24 +2394,12 @@ while running:
                     old_weather = current_weather
                     possible_weathers = [w for w in WEATHER_TYPES if w != old_weather]
                     current_weather = random.choice(possible_weathers)
-
-                    # Clear existing particles and queue new ones (MODIFIED)
+                    
+                    # Clear and recreate weather particles
                     weather_particles.clear()
-                    weather_particles_to_spawn.clear() # Clear spawn queue
-                    weather_particle_spawn_timer = 0.0 # Reset spawn timer
-                    low_fps_timer = 0.0 # Reset low FPS timer
-                    weather_particles_disabled_for_current_match = False # Re-enable particles
-                    weather_change_timer = 0.0 # Reset weather change timer
-
-                    total_particles_to_create = WEATHER_PARTICLE_COUNT.get(current_weather, 0)
-                    weather_particles_to_spawn.extend([current_weather] * total_particles_to_create) # Add weather type strings to queue
-                    print(f"Queued {total_particles_to_create} {current_weather} particles for spawning.")
-
-                    # Clear and recreate weather particles << REMOVED OLD LOOP
-                    # weather_particles.clear()
-                    # for _ in range(WEATHER_PARTICLE_COUNT.get(current_weather, 0)):
-                    #     weather_particles.append(WeatherParticle(current_weather, SCREEN_WIDTH, SCREEN_HEIGHT))
-
+                    for _ in range(WEATHER_PARTICLE_COUNT.get(current_weather, 0)):
+                        weather_particles.append(WeatherParticle(current_weather, SCREEN_WIDTH, SCREEN_HEIGHT))
+                    
                     # Reset wind change timer if it's windy
                     if current_weather == "WINDY":
                         weather_wind_change_timer = random.uniform(10.0, 20.0)
@@ -2436,12 +2437,12 @@ while running:
                 else:
                     print("DEBUG: Match inactive, cannot spawn SWORD.")
             elif event.key == pygame.K_r: 
-                if showing_welcome_screen:
-                    showing_welcome_screen = False
+                if current_game_state == "WELCOME": # Check game state
+                    current_game_state = "PLAYING" # Change game state
                     start_new_game()
                 elif game_over:
                     start_new_game()
-            elif match_active and not showing_welcome_screen:
+            elif match_active and current_game_state == "PLAYING": # Check game state
                 if not player1.is_tumbling:
                     if event.key == pygame.K_a: player1.move(-1)
                     elif event.key == pygame.K_d: player1.move(1)
@@ -2453,7 +2454,7 @@ while running:
                     elif event.key == pygame.K_UP: player2.jump()
                     elif event.key == pygame.K_DOWN: player2.start_kick()
         if event.type == pygame.KEYUP:
-             if match_active and not showing_welcome_screen:
+             if match_active and current_game_state == "PLAYING": # Check game state
                 if not player1.is_tumbling:
                     if event.key == pygame.K_a and player1.vx < 0: player1.stop_move()
                     elif event.key == pygame.K_d and player1.vx > 0: player1.stop_move()
@@ -2461,11 +2462,44 @@ while running:
                     if event.key == pygame.K_LEFT and player2.vx < 0: player2.stop_move()
                     elif event.key == pygame.K_RIGHT and player2.vx > 0: player2.stop_move()
 
-    # Check if we should show welcome screen
-    if showing_welcome_screen:
+    # --- Game State Logic ---
+    if current_game_state == "WELCOME":
+        draw_welcome_screen(screen, font_large, font_medium, font_small)
+        pygame.display.flip()
+        continue
+    elif current_game_state == "PLAYING":
+        # ... (game update logic previously here) ...
+        pass # Placeholder for game update logic
+    elif current_game_state == "GAME_OVER":
+        # ... (game over logic unchanged) ...
+        pass # Placeholder
+
+    # --- Drawing --- (Moved outside game state conditional for now, might need refactoring)
+    if current_game_state == "WELCOME":
+        # This part is now handled above, just pass
+        pass
+    elif current_game_state == "PLAYING" or (current_game_state == "GAME_OVER" and overall_winner): # Also draw game state during game over display
+        # ... (existing drawing logic for PLAYING and GAME_OVER) ...
+        pass # Placeholder for drawing logic
+    elif current_game_state == "GAME_OVER": # Handle final drawing if needed separately
+         # Draw final game over screen with winner trophy etc.
+         # ... (final game over drawing logic - already includes trophy) ...
+         pass # Placeholder
+
+    # ... (rest of the loop, including updates and drawing, needs to be under appropriate game state checks) ...
+
+    # --- Handle Game Over State --- (This block seems misplaced based on the error, should be part of main game logic drawing/update)
+    # if game_over: # ... (unchanged) ...
+    # ... (rest of the game over handling logic) ...
+
+    # Check if we should show welcome screen (REPLACED LOGIC)
+    # if showing_welcome_screen: # OLD LOGIC
+    if current_game_state == "WELCOME": # NEW LOGIC
         draw_welcome_screen(screen, font_goal, font_large, font_medium)
         pygame.display.flip()
         continue
+
+    # ... (rest of the main loop)
 
     # --- Handle Game Over State ---
     if game_over: # ... (unchanged) ...
@@ -2573,41 +2607,14 @@ while running:
         active_explosions = [e for e in active_explosions if e.update(dt)]
         
         # --- Weather Updates ---
-        weather_change_timer += dt # Increment weather change timer (Added)
-
-        # Staggered Particle Spawning (Added)
-        if not weather_particles_disabled_for_current_match and weather_particles_to_spawn:
-            weather_particle_spawn_timer -= dt
-            if weather_particle_spawn_timer <= 0:
-                spawn_count = 0
-                while weather_particles_to_spawn and spawn_count < WEATHER_PARTICLE_BATCH_SIZE:
-                    weather_type_to_spawn = weather_particles_to_spawn.pop(0)
-                    weather_particles.append(WeatherParticle(weather_type_to_spawn, SCREEN_WIDTH, SCREEN_HEIGHT))
-                    spawn_count += 1
-                # print(f"Spawned {spawn_count} weather particles. {len(weather_particles_to_spawn)} remaining.")
-                if weather_particles_to_spawn: # Only reset timer if more are waiting
-                     weather_particle_spawn_timer = WEATHER_PARTICLE_SPAWN_INTERVAL
-                else:
-                     print("Finished spawning weather particles.")
-
-
-        # Update weather particles (Only if not disabled)
-        if not weather_particles_disabled_for_current_match:
-            for p in weather_particles:
-                p.update(dt)
-
-        # FPS Monitoring and Fallback (Added)
-        current_fps = clock.get_fps()
-        if weather_change_timer > WEATHER_STABILIZATION_TIME and current_fps < FPS_LOW_THRESHOLD:
-            low_fps_timer += dt
-            if low_fps_timer > FPS_LOW_DURATION_THRESHOLD and not weather_particles_disabled_for_current_match:
-                print(f"WARN: FPS dropped below {FPS_LOW_THRESHOLD} for {FPS_LOW_DURATION_THRESHOLD}s. Disabling weather particles for this match.")
-                weather_particles_disabled_for_current_match = True
-                weather_particles.clear() # Remove existing particles
-                weather_particles_to_spawn.clear() # Cancel any pending spawns
-        else:
-            low_fps_timer = 0.0 # Reset low FPS timer if FPS is okay or still stabilizing
-
+        if weather_particles_enabled:
+            # Update weather particles (Spread out updates)
+            current_frame_index = int(total_game_time * TARGET_FPS) # Approximate frame index
+            for i, p in enumerate(weather_particles):
+                 # Update only half the particles each frame (alternating)
+                 if i % 2 == current_frame_index % 2:
+                     p.update(dt)
+            
         if current_weather == "WINDY":
             weather_wind_change_timer -= dt
             if weather_wind_change_timer <= 0:
@@ -2876,13 +2883,8 @@ while running:
     for e in active_explosions: e.draw(screen)
     draw_offscreen_arrow(screen, ball, None)
 
-    # Draw weather particles (Only if not disabled) (MODIFIED)
-    if not weather_particles_disabled_for_current_match:
-        for p in weather_particles:
-            p.draw(screen)
-
     # Draw fog overlay AFTER game elements but BEFORE UI
-    if current_weather == "FOGGY" and not weather_particles_disabled_for_current_match: # Also check if disabled
+    if current_weather == "FOGGY":
         fog_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         fog_surf.fill((210, 210, 215, 130))  # Slightly grayish and much less transparent
         screen.blit(fog_surf, (0, 0))
@@ -2912,10 +2914,6 @@ while running:
     effects_str = ", ".join(effects_text) if effects_text else "Normal"
     weather_text = f"{weather_label} [{effects_str}]"
     
-    # Indicate if particles are disabled (Added)
-    if weather_particles_disabled_for_current_match:
-        weather_text += " [Particles Disabled]"
-        
     weather_color = {
         "SUNNY": (255, 200, 0),
         "RAINY": (100, 140, 255),
@@ -3064,22 +3062,25 @@ while running:
         if ball.is_frozen:
             freeze_text = "BALL FROZEN: {:.1f}".format(ball_freeze_timer); freeze_surf = powerup_font.render(freeze_text, True, (180, 220, 255)); freeze_rect = freeze_surf.get_rect(midbottom=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 10)); screen.blit(freeze_surf, freeze_rect)
 
-        # Draw FPS counter (Added)
-        fps_text = f"FPS: {clock.get_fps():.0f}"
-        fps_surf = font_small.render(fps_text, True, WHITE)
-        fps_rect = fps_surf.get_rect(bottomright=(SCREEN_WIDTH - 10, SCREEN_HEIGHT - 10))
-        # Add a small background for readability
-        fps_bg_rect = fps_rect.inflate(6, 4)
-        fps_bg_surf = pygame.Surface(fps_bg_rect.size, pygame.SRCALPHA)
-        fps_bg_surf.fill((0, 0, 0, 150))
-        screen.blit(fps_bg_surf, fps_bg_rect.topleft)
-        screen.blit(fps_surf, fps_rect)
-
         # Debug info
-        if debug_mode:
+    if debug_mode:
             pass  # Add any additional debug info here
 
-        pygame.display.flip()
+    # Draw FPS Counter (Moved to correct location before flip)
+    if current_game_state == "PLAYING": # Only draw FPS during gameplay
+        fps_text = f"FPS: {last_fps:.0f}"
+        fps_surf = font_fps.render(fps_text, True, WHITE)
+        fps_rect = fps_surf.get_rect(bottomright=(SCREEN_WIDTH - 10, SCREEN_HEIGHT - 10))
+        # Optional: Add a small dark background for readability
+        bg_fps_rect = fps_rect.inflate(6, 4)
+        bg_fps_surf = pygame.Surface(bg_fps_rect.size, pygame.SRCALPHA)
+        bg_fps_surf.fill((0, 0, 0, 120))
+        screen.blit(bg_fps_surf, bg_fps_rect.topleft)
+        screen.blit(fps_surf, fps_rect)
+
+    pygame.display.flip()
+
+    # Removed FPS counter code from here
 
 # Cleanup
 pygame.quit(); sys.exit()

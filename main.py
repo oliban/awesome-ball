@@ -594,9 +594,9 @@ class Rocket: # Removed reflect shield check
         self.smoke_timer -= dt
         if self.smoke_timer <= 0:
             num_smoke = 1
-            for _ in range(num_smoke):
-                offset_dist = -(self.width / 2 + 3); smoke_x = self.x + math.cos(self.angle) * offset_dist; smoke_y = self.y + math.sin(self.angle) * offset_dist
-                spread_angle = self.angle + math.pi + random.uniform(-0.5, 0.5); particles.append(Particle(smoke_x, smoke_y, p_type='smoke', angle_override=spread_angle))
+            # for _ in range(num_smoke): # DISABLE ROCKET SMOKE
+            #     offset_dist = -(self.width / 2 + 3); smoke_x = self.x + math.cos(self.angle) * offset_dist; smoke_y = self.y + math.sin(self.angle) * offset_dist
+            #     spread_angle = self.angle + math.pi + random.uniform(-0.5, 0.5); particles.append(Particle(smoke_x, smoke_y, p_type='smoke', angle_override=spread_angle))
             self.smoke_timer = 1 / (FPS * (SMOKE_EMISSION_RATE/10.0))
         exploded = False
         explosion_center_x, explosion_center_y = self.x, self.y # Default center
@@ -642,7 +642,7 @@ class Rocket: # Removed reflect shield check
             
             # Create the VISUAL explosion centered at the rocket's impact point
             visual_explosion_x, visual_explosion_y = self.last_pos # Use last position before update for visual
-            active_explosions.append(Explosion(visual_explosion_x, visual_explosion_y, ball.radius * ROCKET_BLAST_RADIUS_FACTOR))
+            # active_explosions.append(Explosion(visual_explosion_x, visual_explosion_y, ball.radius * ROCKET_BLAST_RADIUS_FACTOR)) # DISABLE VISUAL EXPLOSION
             print(f"Creating visual explosion at ({visual_explosion_x:.0f}, {visual_explosion_y:.0f})")
             
             return True # Indicate explosion happened (for rocket removal)
@@ -2269,7 +2269,7 @@ def start_new_game(): # Full reset
 # --- Collision Handling Function (Player-Ball) ---
 # ... (unchanged) ...
 def handle_player_ball_collisions(player, ball, can_headbutt, body_collision_timer, is_ball_airborne):
-    global current_hit_count
+    global current_hit_count, particles, screen_flash_timer # Added particles
     kick_performed = False; headbutt_performed = False; score_increase = False; kick_pt = None; sword_hit = False
     
     # Check for sword collision with the ball
@@ -2783,19 +2783,19 @@ while running:
                     
                     # Create wind change particles/effects
                     wind_color = (200, 200, 255, 150) 
-                    for _ in range(20):
-                        start_x = random.randint(0, SCREEN_WIDTH)
-                        start_y = random.randint(50, GROUND_Y - 50)
-                        # Angle override based on new direction
-                        angle_ov = 0 if WEATHER_WIND_DIRECTION > 0 else math.pi 
-                        particles.append(Particle(
-                            start_x, start_y, 
-                            colors=[wind_color], 
-                            speed_min=CURRENT_WIND_FORCE * 5, # Adjusted speed based on force
-                            speed_max=CURRENT_WIND_FORCE * 10, 
-                            size=3, 
-                            angle_override=angle_ov
-                        ))
+                    # for _ in range(20): # DISABLE WIND CHANGE PARTICLES
+                    #     start_x = random.randint(0, SCREEN_WIDTH)
+                    #     start_y = random.randint(50, GROUND_Y - 50)
+                    #     # Angle override based on new direction
+                    #     angle_ov = 0 if WEATHER_WIND_DIRECTION > 0 else math.pi 
+                    #     particles.append(Particle(
+                    #         start_x, start_y, 
+                    #         colors=[wind_color], 
+                    #         speed_min=CURRENT_WIND_FORCE * 5, # Adjusted speed based on force
+                    #         speed_max=CURRENT_WIND_FORCE * 10, 
+                    #         size=3, 
+                    #         angle_override=angle_ov
+                    #     ))
                     
                     weather_wind_change_timer = random.uniform(8.0, 18.0) # Reset timer
                     
@@ -2957,7 +2957,7 @@ while running:
         if score_increased_this_frame and last_kick_point and current_hit_count > 0 and current_hit_count % 5 == 0:
             play_sound(loaded_sounds['combo'])
             num_kick_particles = PARTICLE_COUNT // 2
-            for _ in range(num_kick_particles): particle_x = last_kick_point[0] + random.uniform(-5, 5); particle_y = last_kick_point[1] + random.uniform(-5, 5); particles.append(Particle(particle_x, particle_y))
+            # for _ in range(num_kick_particles): particle_x = last_kick_point[0] + random.uniform(-5, 5); particle_y = last_kick_point[1] + random.uniform(-5, 5); particles.append(Particle(particle_x, particle_y)) # DISABLE KICK PARTICLES
 
 
     # --- Goal Detection & Effects ---
@@ -2979,7 +2979,7 @@ while running:
         elif scorer == 2: play_sound(loaded_sounds['goal_p2']);
         if player2_score > 0 and player2_score % 5 == 0: play_sound(loaded_sounds['combo'])
         goal_center_y = GOAL_Y_POS + GOAL_HEIGHT / 2
-        for _ in range(GOAL_PARTICLE_COUNT): particles.append(Particle(goal_pos_x, goal_center_y, colors=GOAL_EXPLOSION_COLORS, speed_min=GOAL_PARTICLE_SPEED_MIN, speed_max=GOAL_PARTICLE_SPEED_MAX, lifespan=GOAL_PARTICLE_LIFESPAN))
+        # for _ in range(GOAL_PARTICLE_COUNT): particles.append(Particle(goal_pos_x, goal_center_y, colors=GOAL_EXPLOSION_COLORS, speed_min=GOAL_PARTICLE_SPEED_MIN, speed_max=GOAL_PARTICLE_SPEED_MAX, lifespan=GOAL_PARTICLE_LIFESPAN)) # DISABLE GOAL PARTICLES
 
         # --- Match/Game Win Check ---
         current_match_limit = DEBUG_MATCH_POINT_LIMIT if debug_mode else MATCH_POINT_LIMIT
@@ -3068,12 +3068,12 @@ while running:
     if screen_flash_timer > 0: flash_surf = pygame.Surface(screen.get_size(), pygame.SRCALPHA); flash_alpha = int(255 * (screen_flash_timer / SCREEN_FLASH_DURATION)); flash_surf.fill((SCREEN_FLASH_COLOR[0], SCREEN_FLASH_COLOR[1], SCREEN_FLASH_COLOR[2], flash_alpha)); screen.blit(flash_surf, (0,0))
 
     # Draw Game Elements
-    for p in particles: p.draw(screen)
+    # for p in particles: p.draw(screen) # DISABLE DRAWING GENERIC PARTICLES
     for pup in active_powerups: pup.draw(screen)
     for r in active_rockets: r.draw(screen)
     player1.draw(screen); player2.draw(screen)
     ball.draw(screen)
-    for e in active_explosions: e.draw(screen)
+    # for e in active_explosions: e.draw(screen) # DISABLE DRAWING EXPLOSIONS
     draw_offscreen_arrow(screen, ball, None)
 
     # Draw fog overlay AFTER game elements but BEFORE UI

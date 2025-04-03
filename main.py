@@ -113,7 +113,7 @@ SMOKE_EMISSION_RATE = 2
 debug_mode = False
 DEBUG_BG_COLOR = (220, 180, 255)
 DEBUG_MATCH_POINT_LIMIT = 1
-DEBUG_VERSION = 5 # <<< Increment version to 5
+DEBUG_VERSION = 6 # <<< Increment version to 6
 BUILD_TIMESTAMP = datetime.now().strftime("%Y-%m-%d %H:%M:%S") # <<< FIX: Remove redundant datetime.
 
 # --- Weather Effect Constants ---
@@ -1374,28 +1374,8 @@ class StickMan: # Updated powerup dict/handling
         return (tip_x, tip_y, hand_pos[0], hand_pos[1], self.sword_angle)
         
     def draw(self, screen): # ... (no change) ...
-        # --- Simple Rectangle Drawing for Performance Test ---
-        simple_rect = pygame.Rect(0, 0, self.width, self.height)
-        simple_rect.centerx = int(self.x)
-        simple_rect.bottom = int(self.y)
-        pygame.draw.rect(screen, self.team_color, simple_rect)
-        pygame.draw.rect(screen, BLACK, simple_rect, 2)
-        # Draw Stun Indicator (even on simple mode)
-        if self.is_stunned:
-            stun_font = pygame.font.Font(None, int(30 * (self.head_radius / self.base_head_radius)))
-            stun_text = "Zzz"
-            stun_color = (60, 60, 150)
-            offset_y = math.sin(pygame.time.get_ticks() * 0.01) * 3
-            stun_surf = stun_font.render(stun_text, True, stun_color)
-            # Position relative to the simple rect
-            stun_rect = stun_surf.get_rect(centerx=simple_rect.centerx, 
-                                           bottom=simple_rect.top - 10 + offset_y) 
-            screen.blit(stun_surf, stun_rect)
-        return # <<< EXIT EARLY - Skip detailed drawing
-        # --- END Simple Rectangle Drawing ---
-        
-        # --- Original Detailed Drawing Logic (Commented out below) ---
-        '''
+        # --- Restore Original Detailed Drawing Logic ---
+        # Remove the simple drawing code block and the triple quotes around original code
         min_x = float('inf'); max_x = float('-inf')
         min_y = float('inf'); max_y = float('-inf')
         for pos in [self.hip_pos, self.neck_pos, self.head_pos, self.l_elbow_pos, self.l_hand_pos, self.r_elbow_pos, self.r_hand_pos, self.l_knee_pos, self.l_foot_pos, self.r_knee_pos, self.r_foot_pos]:
@@ -1499,7 +1479,6 @@ class StickMan: # Updated powerup dict/handling
             stun_rect = stun_surf.get_rect(centerx=int(self.head_pos[0]), 
                                            bottom=int(self.head_pos[1] - self.head_radius - 10 + offset_y))
             screen.blit(stun_surf, stun_rect)
-        '''
 
     def update_limbs(self, dt, is_walking):
         # Limb Angle Calculations based on state (walking, jumping, kicking, tumbling)

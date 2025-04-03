@@ -893,7 +893,7 @@ class WeatherParticle:
 class StickMan: # Updated powerup dict/handling
     # Add team_color and team_accent to the arguments, with defaults
     def __init__(self, x, y, facing=1, team_color=WHITE, team_accent=BLACK):
-        self.x = x; self.y = y; self.base_y = y; self.width = 20; self.height = 80; self.vx = 0; self.vy = 0; self.is_jumping = False; self.is_kicking = False; self.kick_timer = 0; self.kick_duration = 18; self.walk_cycle_timer = 0.0;
+        self.x = x; self.y = y; self.base_y = y; self.width = 20; self.height = 80; self.vx = 0; self.vy = 0; self.is_jumping = False; self.is_kicking = False; self.kick_timer = 0; self.kick_duration = 24; self.walk_cycle_timer = 0.0;
 
         # --- Assign Team Colors FIRST ---
         # Assign the passed arguments to the instance attributes
@@ -902,7 +902,8 @@ class StickMan: # Updated powerup dict/handling
         self.eye_color = BLACK # Assign eye color here too
 
         # --- Base size attributes ---
-        self.base_head_radius = 12; self.base_torso_length = 36; self.base_limb_width = 10; self.base_upper_arm_length = 12; self.base_forearm_length = 12; self.base_thigh_length = 14; self.base_shin_length = 14; self.base_nose_length = self.base_head_radius * 0.5; self.base_nose_width = self.base_head_radius * 0.3
+        self.base_head_radius = 12  # Changed back from 15 to original 12
+        self.base_torso_length = 36; self.base_limb_width = 10; self.base_upper_arm_length = 12; self.base_forearm_length = 12; self.base_thigh_length = 14; self.base_shin_length = 14; self.base_nose_length = self.base_head_radius * 0.5; self.base_nose_width = self.base_head_radius * 0.3
         # --- Current size attributes (initially same as base) ---
         self.head_radius = self.base_head_radius; self.torso_length = self.base_torso_length; self.limb_width = self.base_limb_width; self.upper_arm_length = self.base_upper_arm_length; self.forearm_length = self.base_forearm_length; self.thigh_length = self.base_thigh_length; self.shin_length = self.base_shin_length; self.current_nose_length = self.base_nose_length; self.current_nose_width = self.base_nose_width
 
@@ -939,6 +940,22 @@ class StickMan: # Updated powerup dict/handling
         # --- Stun Variables ---
         self.stun_timer = 0.0
         self.is_stunned = False
+        
+        self.head_bounce_timer = 0
+        self.head_bounce_intensity = 0
+        self.eye_size = 3
+        
+    def start_stun(self, duration): # New method
+        """Starts the stun effect on the player."""
+        if not self.is_stunned: # Prevent stun-locking
+            self.is_stunned = True
+            self.stun_timer = duration
+            self.vx = 0 # Stop horizontal movement
+            self.vy = max(0, self.vy) # Stop upward momentum, allow falling
+            self.is_kicking = False # Cancel kick
+            self.is_jumping = False # Consider player as not actively jumping
+            print(f"Player {1 if self.facing_direction==1 else 2} stunned for {duration:.1f}s!")
+            
     def start_tumble(self):
         if not self.is_tumbling:
              self.is_tumbling = True; self.tumble_timer = TUMBLE_DURATION
@@ -1015,13 +1032,13 @@ class StickMan: # Updated powerup dict/handling
         self.current_nose_length = self.base_nose_length * head_scale
         self.current_nose_width = self.base_nose_width * head_scale
     def move(self, direction):
-        if self.is_tumbling or self.is_stunned: return # <<< Added stun check
+        if self.is_tumbling or self.is_stunned: return # <<< Add stun check
         move_direction = direction
         if self.is_controls_reversed: move_direction *= -1
         if not self.is_kicking: self.vx = move_direction * self.player_speed
         if direction != 0: self.facing_direction = direction
     def stop_move(self):
-        if self.is_tumbling: return
+        if self.is_tumbling or self.is_stunned: return # Added stun check
         self.vx = 0
     def jump(self):
         if self.is_tumbling or self.is_stunned: return # <<< Added stun check
@@ -1044,7 +1061,7 @@ class StickMan: # Updated powerup dict/handling
             self.vy = self.jump_power; self.walk_cycle_timer = 0
             if "FLIGHT" in self.active_powerups: self.start_wing_flap()
     def start_kick(self):
-        if self.is_tumbling or self.is_stunned: return # <<< Added stun check
+        if self.is_tumbling or self.is_stunned: return # Added stun check
         if not self.is_kicking:
             if "ROCKET_LAUNCHER" in self.active_powerups: 
                 self.fire_rocket()
@@ -1077,6 +1094,35 @@ class StickMan: # Updated powerup dict/handling
     def randomize_nose(self):
         random_factor = random.uniform(1.0, 5.0); self.current_nose_length = self.base_nose_length * random_factor; self.current_nose_width = self.base_nose_width * random_factor; self.current_nose_width = min(self.current_nose_width, self.current_nose_length * 0.8)
     def update(self, dt, other_player):
+        # --- Update Stun Timer --- FIRST!
+        if self.stun_timer > 0:
+            self.stun_timer -= dt
+            if self.stun_timer <= 0:
+                self.stun_timer = 0.0
+                self.is_stunned = False
+                print(f"Player {1 if self.facing_direction==1 else 2} is no longer stunned.")
+            else:
+                self.is_stunned = True # Ensure is_stunned remains true while timer is active
+                # Stop any current movement if stunned
+                self.vx = 0
+                # Allow gravity to work while stunned
+                current_gravity = GRAVITY * POWERUP_LOW_GRAVITY_FACTOR if "LOW_GRAVITY" in self.active_powerups else GRAVITY
+                weather_effect = WEATHER_EFFECTS.get(current_weather, WEATHER_EFFECTS["SUNNY"])
+                current_gravity *= weather_effect.get("gravity", 1.0)
+                self.vy += current_gravity * dt
+                self.y += self.vy * dt
+                # Ground collision while stunned
+                if self.y >= self.base_y:
+                    self.y = self.base_y
+                    self.vy = 0
+                
+                # Update limbs but don't allow actions
+                self.update_limbs(dt, False) # Update limbs with is_walking=False
+                return # Skip rest of update if stunned
+        # Only proceed with rest of update if not stunned
+        else:
+            self.is_stunned = False # Ensure stun is false if timer is not active
+            
         if self.is_tumbling:
             self.tumble_timer -= dt
             if self.tumble_timer <= 0: self.is_tumbling = False; self.tumble_timer = 0.0; self.rotation_angle = 0.0; self.rotation_velocity = 0.0; print(f"Player {1 if self.facing_direction==1 else 2} finished tumble.")
@@ -1348,8 +1394,8 @@ class StickMan: # Updated powerup dict/handling
         self.l_foot_pos = (l_foot_x, l_foot_y); self.r_foot_pos = (r_foot_x, r_foot_y)
         body_width = self.limb_width * 1.5
         self.body_rect.width = int(body_width); self.body_rect.height = max(1, int(self.hip_pos[1] - self.neck_pos[1])); self.body_rect.centerx = int(self.hip_pos[0]); self.body_rect.top = int(self.neck_pos[1])
-    def get_kick_impact_point(self): # ... (no change) ...
-        impact_start = 0.25; impact_end = 0.6
+    def get_kick_impact_point(self):
+        impact_start = 0.15; impact_end = 0.7 # Widened the impact window
         if self.is_kicking:
             if self.kick_duration <= 0: return None
             progress = self.kick_timer / self.kick_duration
@@ -1599,6 +1645,82 @@ class StickMan: # Updated powerup dict/handling
                               int(blade_width * 0.4))
 
         # --- Tumble Rotation and Blitting ---
+
+    def update_limbs(self, dt, is_walking):
+        # Limb Angle Calculations based on state (walking, jumping, kicking, tumbling)
+        if self.is_tumbling:
+            tumble_speed = self.rotation_velocity * 1.5; current_time_ms = pygame.time.get_ticks()
+            self.l_upper_arm_angle = math.sin(current_time_ms * 0.01 + 1) * 0.8 + tumble_speed * 0.05
+            self.r_upper_arm_angle = math.sin(current_time_ms * 0.01 + 2) * 0.8 - tumble_speed * 0.05
+            self.l_forearm_angle = math.sin(current_time_ms * 0.015 + 3) * 1.2
+            self.r_forearm_angle = math.sin(current_time_ms * 0.015 + 4) * 1.2
+            self.l_thigh_angle = math.sin(current_time_ms * 0.01 + 5) * 0.6 - tumble_speed * 0.04
+            self.r_thigh_angle = math.sin(current_time_ms * 0.01 + 6) * 0.6 + tumble_speed * 0.04
+            self.l_shin_angle = math.sin(current_time_ms * 0.015 + 7) * 1.0
+            self.r_shin_angle = math.sin(current_time_ms * 0.015 + 0) * 1.0
+        elif self.is_kicking:
+             self.walk_cycle_timer = 0; self.kick_timer += 1 # Use frame count increment
+             progress = min(self.kick_timer / self.kick_duration, 1.0)
+             windup_end = 0.20; impact_start = 0.25; impact_end = 0.50; follow_end = 1.0
+             if progress < windup_end: thigh_prog_angle = KICK_THIGH_WINDUP_ANGLE * (progress / windup_end)
+             elif progress < impact_end: impact_progress = (progress - windup_end) / (impact_end - windup_end); thigh_prog_angle = KICK_THIGH_WINDUP_ANGLE + (KICK_THIGH_FOLLOW_ANGLE - KICK_THIGH_WINDUP_ANGLE) * impact_progress
+             else: follow_progress = (progress - impact_end) / (follow_end - impact_end); ease_out_factor = 1.0 - follow_progress**1.5; thigh_prog_angle = KICK_THIGH_FOLLOW_ANGLE * ease_out_factor
+             if progress < impact_start: shin_prog_angle = KICK_SHIN_WINDUP_ANGLE * (progress / impact_start)
+             elif progress < impact_end: impact_progress = (progress - impact_start) / (impact_end - impact_start); ease_in_factor = impact_progress ** 2; shin_prog_angle = KICK_SHIN_WINDUP_ANGLE + (KICK_SHIN_IMPACT_ANGLE - KICK_SHIN_WINDUP_ANGLE) * ease_in_factor
+             else: follow_progress = (progress - impact_end) / (follow_end - impact_end); shin_prog_angle = KICK_SHIN_IMPACT_ANGLE + (KICK_SHIN_FOLLOW_ANGLE - KICK_SHIN_IMPACT_ANGLE) * follow_progress
+             kick_leg_thigh_angle = thigh_prog_angle; kick_leg_shin_angle = shin_prog_angle
+             other_leg_thigh_angle = -thigh_prog_angle * 0.1; other_leg_shin_angle = 0.1
+             if self.facing_direction == 1: self.r_thigh_angle = kick_leg_thigh_angle; self.r_shin_angle = kick_leg_shin_angle; self.l_thigh_angle = other_leg_thigh_angle; self.l_shin_angle = other_leg_shin_angle
+             else: self.l_thigh_angle = kick_leg_thigh_angle; self.l_shin_angle = kick_leg_shin_angle; self.r_thigh_angle = other_leg_thigh_angle; self.r_shin_angle = other_leg_shin_angle
+             self.l_upper_arm_angle = -thigh_prog_angle * 0.05 * self.facing_direction; self.r_upper_arm_angle = thigh_prog_angle * 0.03 * self.facing_direction
+             self.l_forearm_angle = 0.2; self.r_forearm_angle = 0.2
+             if self.kick_timer >= self.kick_duration: self.is_kicking = False; self.kick_timer = 0;
+        else: # Not kicking or tumbling
+             if is_walking:
+                 walk_sin = math.sin(self.walk_cycle_timer);
+                 self.l_upper_arm_angle = RUN_UPPER_ARM_SWING * walk_sin * self.facing_direction;
+                 self.r_upper_arm_angle = -RUN_UPPER_ARM_SWING * walk_sin * self.facing_direction;
+                 self.l_forearm_angle = RUN_FOREARM_SWING * math.sin(self.walk_cycle_timer - RUN_FOREARM_OFFSET_FACTOR) * self.facing_direction;
+                 self.r_forearm_angle = -RUN_FOREARM_SWING * math.sin(self.walk_cycle_timer - RUN_FOREARM_OFFSET_FACTOR) * self.facing_direction;
+                 self.l_thigh_angle = -LEG_THIGH_SWING * walk_sin * self.facing_direction;
+                 self.r_thigh_angle = LEG_THIGH_SWING * walk_sin * self.facing_direction;
+                 shin_bend = LEG_SHIN_BEND_WALK * max(0, math.sin(self.walk_cycle_timer + LEG_SHIN_BEND_SHIFT));
+                 self.l_shin_angle = shin_bend if self.l_thigh_angle * self.facing_direction < 0 else 0.1;
+                 self.r_shin_angle = shin_bend if self.r_thigh_angle * self.facing_direction < 0 else 0.1
+             elif self.is_jumping and not self.on_other_player_head and not self.on_left_crossbar and not self.on_right_crossbar: # Check crossbars here too
+                 base_up_angle = JUMP_UPPER_ARM_BASE - self.vy * JUMP_UPPER_ARM_VY_FACTOR;
+                 self.l_upper_arm_angle = base_up_angle; self.r_upper_arm_angle = base_up_angle;
+                 base_fore_angle = JUMP_FOREARM_BASE;
+                 self.l_forearm_angle = base_fore_angle; self.r_forearm_angle = base_fore_angle;
+                 jump_progress = max(0, min(1, 1 - (self.y / self.base_y)));
+                 thigh_tuck = JUMP_THIGH_TUCK * jump_progress; shin_tuck = JUMP_SHIN_TUCK * jump_progress;
+                 self.l_thigh_angle = thigh_tuck; self.r_thigh_angle = thigh_tuck;
+                 self.l_shin_angle = shin_tuck; self.r_shin_angle = shin_tuck
+             else: # Idle or on head/crossbar pose
+                 self.l_upper_arm_angle = 0; self.r_upper_arm_angle = 0; self.l_forearm_angle = 0; self.r_forearm_angle = 0;
+                 self.l_thigh_angle = 0; self.r_thigh_angle = 0; self.l_shin_angle = 0; self.r_shin_angle = 0
+
+        # Calculate Joint Positions (This part must always run to update positions)
+        current_y = self.y; current_x = self.x
+        total_leg_visual_height = self.thigh_length + self.shin_length
+        self.hip_pos = (current_x, current_y - total_leg_visual_height)
+        upper_body_x = current_x
+        self.neck_pos = (upper_body_x, self.hip_pos[1] - self.torso_length)
+        self.head_pos = (upper_body_x, self.neck_pos[1] - self.head_radius)
+        self.shoulder_pos = self.neck_pos
+        # Arms
+        l_elbow_x = self.shoulder_pos[0] + self.upper_arm_length * math.sin(self.l_upper_arm_angle); l_elbow_y = self.shoulder_pos[1] + self.upper_arm_length * math.cos(self.l_upper_arm_angle); self.l_elbow_pos = (l_elbow_x, l_elbow_y);
+        l_hand_angle_world = self.l_upper_arm_angle + self.l_forearm_angle; l_hand_x = self.l_elbow_pos[0] + self.forearm_length * math.sin(l_hand_angle_world); l_hand_y = self.l_elbow_pos[1] + self.forearm_length * math.cos(l_hand_angle_world); self.l_hand_pos = (l_hand_x, l_hand_y);
+        r_elbow_x = self.shoulder_pos[0] + self.upper_arm_length * math.sin(self.r_upper_arm_angle); r_elbow_y = self.shoulder_pos[1] + self.upper_arm_length * math.cos(self.r_upper_arm_angle); self.r_elbow_pos = (r_elbow_x, r_elbow_y);
+        r_hand_angle_world = self.r_upper_arm_angle + self.r_forearm_angle; r_hand_x = self.r_elbow_pos[0] + self.forearm_length * math.sin(r_hand_angle_world); r_hand_y = self.r_elbow_pos[1] + self.forearm_length * math.cos(r_hand_angle_world); self.r_hand_pos = (r_hand_x, r_hand_y);
+        # Legs
+        l_knee_x = self.hip_pos[0] + self.thigh_length * math.sin(self.l_thigh_angle); l_knee_y = self.hip_pos[1] + self.thigh_length * math.cos(self.l_thigh_angle); self.l_knee_pos = (l_knee_x, l_knee_y);
+        l_foot_angle_world = self.l_thigh_angle + self.l_shin_angle; l_foot_x = self.l_knee_pos[0] + self.shin_length * math.sin(l_foot_angle_world); l_foot_y = self.l_knee_pos[1] + self.shin_length * math.cos(l_foot_angle_world); self.l_foot_pos = (l_foot_x, l_foot_y);
+        r_knee_x = self.hip_pos[0] + self.thigh_length * math.sin(self.r_thigh_angle); r_knee_y = self.hip_pos[1] + self.thigh_length * math.cos(self.r_thigh_angle); self.r_knee_pos = (r_knee_x, r_knee_y);
+        r_foot_angle_world = self.r_thigh_angle + self.r_shin_angle; r_foot_x = self.r_knee_pos[0] + self.shin_length * math.sin(r_foot_angle_world); r_foot_y = self.r_knee_pos[1] + self.shin_length * math.cos(r_foot_angle_world); self.r_foot_pos = (r_foot_x, r_foot_y);
+        # Body Rect
+        body_width = self.limb_width * 1.5
+        self.body_rect.width = int(body_width); self.body_rect.height = max(1, int(self.hip_pos[1] - self.neck_pos[1])); self.body_rect.centerx = int(self.hip_pos[0]); self.body_rect.top = int(self.neck_pos[1])
 
 
 # --- Ball Class ---
@@ -2809,25 +2931,57 @@ while running:
                     if player1.vx < 0: player1.vx = 0
                     if player2.vx > 0: player2.vx = 0
         kick_push_amount = ball.radius * 1.5; kick_push_vx_base = 5
+        kick_hitbox_buffer = 10.0  # Buffer for easier head hits
         p1_kick_point = player1.get_kick_impact_point()
-        if p1_kick_point and p2_rect.collidepoint(p1_kick_point) and not player2.is_tumbling:
-            print("P1 kicked P2")
-            kick_multiplier = BIG_PLAYER_KICK_MULTIPLIER if player1.is_big else 1.0
-            kick_push_vx = kick_push_vx_base * kick_multiplier
-            player2.x += kick_push_amount * player1.facing_direction * kick_multiplier
-            player2.vx += kick_push_vx * player1.facing_direction
-            player2.vy -= 3 * kick_multiplier; player2.is_jumping = True
-            play_sound(loaded_sounds['body_hit'])
+
+        if p1_kick_point:
+            # Check head collision with buffer
+            head_distance = math.sqrt((p1_kick_point[0] - player2.head_pos[0])**2 + (p1_kick_point[1] - player2.head_pos[1])**2)
+            if head_distance < player2.head_radius + kick_hitbox_buffer and not player2.is_tumbling:
+                print("P1 kicked P2's head - STUN!")
+                player2.start_stun(1)  # Stun for 1 second
+                kick_multiplier = BIG_PLAYER_KICK_MULTIPLIER if player1.is_big else 1.0
+                kick_push_vx = kick_push_vx_base * kick_multiplier * 0.7  # Less pushback on head hits
+                player2.x += kick_push_amount * player1.facing_direction * kick_multiplier * 0.7
+                player2.vx += kick_push_vx * player1.facing_direction
+                player2.vy -= 2 * kick_multiplier
+                player2.is_jumping = True
+                play_sound(loaded_sounds['body_hit'])
+            # Body collision check (no stun, just pushback)
+            elif p2_rect.collidepoint(p1_kick_point) and not player2.is_tumbling:
+                print("P1 kicked P2's body")
+                kick_multiplier = BIG_PLAYER_KICK_MULTIPLIER if player1.is_big else 1.0
+                kick_push_vx = kick_push_vx_base * kick_multiplier
+                player2.x += kick_push_amount * player1.facing_direction * kick_multiplier
+                player2.vx += kick_push_vx * player1.facing_direction
+                player2.vy -= 3 * kick_multiplier
+                player2.is_jumping = True
+                play_sound(loaded_sounds['body_hit'])
+
         p2_kick_point = player2.get_kick_impact_point()
-        if p2_kick_point and p1_rect.collidepoint(p2_kick_point) and not player1.is_tumbling:
-            print("P2 kicked P1")
-            kick_multiplier = BIG_PLAYER_KICK_MULTIPLIER if player2.is_big else 1.0
-            kick_push_vx = kick_push_vx_base * kick_multiplier
-            player1.x += kick_push_amount * player2.facing_direction * kick_multiplier
-            player1.vx += kick_push_vx * player2.facing_direction
-            player1.vy -= 3 * kick_multiplier; player1.is_jumping = True
-            play_sound(loaded_sounds['body_hit'])
-            
+        if p2_kick_point:
+            # Check head collision with buffer
+            head_distance = math.sqrt((p2_kick_point[0] - player1.head_pos[0])**2 + (p2_kick_point[1] - player1.head_pos[1])**2)
+            if head_distance < player1.head_radius + kick_hitbox_buffer and not player1.is_tumbling:
+                print("P2 kicked P1's head - STUN!")
+                player1.start_stun(1)  # Stun for 1 second
+                kick_multiplier = BIG_PLAYER_KICK_MULTIPLIER if player2.is_big else 1.0
+                kick_push_vx = kick_push_vx_base * kick_multiplier * 0.7  # Less pushback on head hits
+                player1.x += kick_push_amount * player2.facing_direction * kick_multiplier * 0.7
+                player1.vx += kick_push_vx * player2.facing_direction
+                player1.vy -= 2 * kick_multiplier
+                player1.is_jumping = True
+                play_sound(loaded_sounds['body_hit'])
+            # Body collision check (no stun, just pushback)
+            elif p1_rect.collidepoint(p2_kick_point) and not player1.is_tumbling:
+                print("P2 kicked P1's body")
+                kick_multiplier = BIG_PLAYER_KICK_MULTIPLIER if player2.is_big else 1.0
+                kick_push_vx = kick_push_vx_base * kick_multiplier
+                player1.x += kick_push_amount * player2.facing_direction * kick_multiplier
+                player1.vx += kick_push_vx * player2.facing_direction
+                player1.vy -= 3 * kick_multiplier
+                player1.is_jumping = True
+                play_sound(loaded_sounds['body_hit'])
         # --- SWORD-PLAYER COLLISIONS ---
         # Check for player1's sword hitting player2
         if player1.is_sword and player1.is_kicking and not player2.is_tumbling:

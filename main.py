@@ -1353,112 +1353,100 @@ class StickMan: # Updated powerup dict/handling
         
         return (tip_x, tip_y, hand_pos[0], hand_pos[1], self.sword_angle)
         
-    def draw(self, screen): # ... (no change) ...
-        # --- Restore Original Detailed Drawing Logic ---
-        # Remove the simple drawing code block and the triple quotes around original code
-        min_x = float('inf'); max_x = float('-inf')
-        min_y = float('inf'); max_y = float('-inf')
-        for pos in [self.hip_pos, self.neck_pos, self.head_pos, self.l_elbow_pos, self.l_hand_pos, self.r_elbow_pos, self.r_hand_pos, self.l_knee_pos, self.l_foot_pos, self.r_knee_pos, self.r_foot_pos]:
-            if pos:
-                min_x = min(min_x, pos[0]); max_x = max(max_x, pos[0])
-                min_y = min(min_y, pos[1]); max_y = max(max_y, pos[1])
-        min_x -= self.head_radius; max_x += self.head_radius
-        min_y -= self.head_radius; max_y += self.head_radius
-        render_width = max(int(max_x - min_x), 1); render_height = max(int(max_y - min_y), 1);
-        offset_x = min_x; offset_y = min_y
-        temp_surf = pygame.Surface((render_width, render_height), pygame.SRCALPHA)
-        def offset_pos(pos): return (int(pos[0] - offset_x), int(pos[1] - offset_y))
-        def draw_limb_segment_offset(start_pos, end_pos, length, color, limb_w):
-            if not start_pos or not end_pos: return
-            offset_start = offset_pos(start_pos); offset_end = offset_pos(end_pos)
-            try: pygame.draw.line(temp_surf, color, offset_start, offset_end, int(limb_w))
-            except ValueError: pass
-        limb_width = max(1, int(self.limb_width))
-        head_radius = max(1, int(self.head_radius))
-        def create_wing_poly_offset(attach_point, angle, length, width):
-            if not attach_point: return []
-            offset_attach = offset_pos(attach_point); points = [offset_attach]
-            angle1 = angle - 0.5 * self.wing_angle; angle2 = angle + 0.5 * self.wing_angle; tip_angle = angle
-            points.append((offset_attach[0] + length * math.cos(angle1), offset_attach[1] + length * math.sin(angle1)))
-            points.append((offset_attach[0] + length * 1.2 * math.cos(tip_angle), offset_attach[1] + length * 1.2 * math.sin(tip_angle)))
-            points.append((offset_attach[0] + length * math.cos(angle2), offset_attach[1] + length * math.sin(angle2)))
-            return [(int(p[0]), int(p[1])) for p in points]
-        # Torso
-        draw_limb_segment_offset(self.hip_pos, self.neck_pos, self.torso_length, self.team_color, limb_width)
-        # Head
-        if self.head_pos: pygame.draw.circle(temp_surf, self.team_color, offset_pos(self.head_pos), head_radius)
-        # Arms
-        draw_limb_segment_offset(self.shoulder_pos, self.l_elbow_pos, self.upper_arm_length, self.team_color, limb_width)
-        draw_limb_segment_offset(self.l_elbow_pos, self.l_hand_pos, self.forearm_length, self.team_color, limb_width)
-        draw_limb_segment_offset(self.shoulder_pos, self.r_elbow_pos, self.upper_arm_length, self.team_color, limb_width)
-        draw_limb_segment_offset(self.r_elbow_pos, self.r_hand_pos, self.forearm_length, self.team_color, limb_width)
-        # Legs
-        draw_limb_segment_offset(self.hip_pos, self.l_knee_pos, self.thigh_length, self.team_color, limb_width)
-        draw_limb_segment_offset(self.l_knee_pos, self.l_foot_pos, self.shin_length, self.team_color, limb_width)
-        draw_limb_segment_offset(self.hip_pos, self.r_knee_pos, self.thigh_length, self.team_color, limb_width)
-        draw_limb_segment_offset(self.r_knee_pos, self.r_foot_pos, self.shin_length, self.team_color, limb_width)
-        # Accents
-        accent_radius = max(1, int(head_radius * 0.6)); nose_radius = max(1, int(head_radius * 0.15))
-        if self.head_pos: pygame.draw.circle(temp_surf, self.team_accent, offset_pos(self.head_pos), accent_radius, 2)
-        nose_offset_x = self.facing_direction * head_radius * 0.55; nose_offset_y = head_radius * 0.1
-        nose_pos = (self.head_pos[0] + nose_offset_x, self.head_pos[1] + nose_offset_y) if self.head_pos else None
-        if nose_pos: pygame.draw.circle(temp_surf, self.nose_color, offset_pos(nose_pos), nose_radius)
-        joint_radius = max(1, int(limb_width / 2))
-        for pos in [self.l_elbow_pos, self.r_elbow_pos, self.l_knee_pos, self.r_knee_pos]:
-            if pos: pygame.draw.circle(temp_surf, self.team_accent, offset_pos(pos), joint_radius)
-        foot_size = max(2, int(limb_width * 0.8))
-        for pos in [self.l_foot_pos, self.r_foot_pos]:
-            if pos: pygame.draw.circle(temp_surf, self.team_accent, offset_pos(pos), foot_size)
-        # Draw Wings if flying
-        if self.is_flying:
-            wing_color = (220, 220, 250, 150); wing_outline = (100, 100, 150)
-            wing_attach = ((self.hip_pos[0] + self.neck_pos[0]) / 2, (self.hip_pos[1] + self.neck_pos[1]) / 2) if self.hip_pos and self.neck_pos else None
-            if wing_attach:
-                l_wing_angle = -math.pi * 0.75 + self.wing_flap_angle; r_wing_angle = -math.pi * 0.25 - self.wing_flap_angle
-                l_wing_poly = create_wing_poly_offset(wing_attach, l_wing_angle, self.upper_arm_length * 1.8, self.upper_arm_length * 0.8)
-                r_wing_poly = create_wing_poly_offset(wing_attach, r_wing_angle, self.upper_arm_length * 1.8, self.upper_arm_length * 0.8)
-                if l_wing_poly: pygame.draw.polygon(temp_surf, wing_color, l_wing_poly); pygame.draw.polygon(temp_surf, wing_outline, l_wing_poly, 1)
-                if r_wing_poly: pygame.draw.polygon(temp_surf, wing_color, r_wing_poly); pygame.draw.polygon(temp_surf, wing_outline, r_wing_poly, 1)
-        # Draw Rocket Launcher if active
-        if "ROCKET_LAUNCHER" in self.active_powerups:
-            gun_angle = 0 if self.facing_direction == 1 else math.pi; gun_angle += self.gun_angle_offset
-            draw_rotated_rectangle(temp_surf, GUN_COLOR, offset_pos(self.gun_pos), GUN_SIZE[0], GUN_SIZE[1], gun_angle)
-        # Draw Sword if active
-        if self.is_sword:
-            sword_pos_data = self.get_sword_position()
-            if sword_pos_data:
-                tip_x, tip_y, base_x, base_y, angle = sword_pos_data
-                pygame.draw.line(temp_surf, SWORD_COLOR, offset_pos((base_x, base_y)), offset_pos((tip_x, tip_y)), max(1, int(self.limb_width * SWORD_WIDTH_FACTOR)))
-        if self.is_tumbling and self.rotation_angle != 0:
-            rotated_surf = pygame.transform.rotate(temp_surf, -math.degrees(self.rotation_angle))
-            blit_rect = rotated_surf.get_rect(center = offset_pos(self.hip_pos))
-            screen.blit(rotated_surf, (blit_rect.left - offset_x, blit_rect.top - offset_y))
-        else:
-            screen.blit(temp_surf, (min_x, min_y))
-        if "ROCKET_LAUNCHER" in self.active_powerups:
-            base_angle = 0 if self.facing_direction == 1 else math.pi
-            laser_world_angle = base_angle + self.gun_angle_offset
-            laser_end_x = self.gun_tip_pos[0] + LASER_LENGTH * math.cos(laser_world_angle); laser_end_y = self.gun_tip_pos[1] + LASER_LENGTH * math.sin(laser_world_angle)
-            try: pygame.draw.aaline(screen, LASER_COLOR, self.gun_tip_pos, (laser_end_x, laser_end_y))
-            except ValueError: pass # Avoid potential errors with invalid points
-        if self.is_controls_reversed:
-            q_font = pygame.font.Font(None, int(24 * (self.head_radius / self.base_head_radius)))
-            q_surf = q_font.render("?", True, RED)
-            q_rect = q_surf.get_rect(centerx=int(self.head_pos[0]), bottom=int(self.head_pos[1] - self.head_radius - 5)); screen.blit(q_surf, q_rect)
+    def draw(self, screen):
+        # Simplified drawing using basic pygame.draw functions for performance
 
-        # --- Draw Stun Indicator ---
+        # Use current calculated sizes
+        head_radius = int(self.head_radius)
+        torso_length = int(self.torso_length)
+        upper_arm_length = int(self.upper_arm_length)
+        forearm_length = int(self.forearm_length)
+        thigh_length = int(self.thigh_length)
+        shin_length = int(self.shin_length)
+        limb_width = max(2, int(self.limb_width * 0.5)) # Make lines visible but thin
+
+        # Basic positions
+        center_x = int(self.x)
+        base_y = int(self.y)
+        head_center_y = base_y - torso_length - head_radius
+        neck_y = base_y - torso_length
+        hip_y = base_y
+
+        # Head
+        pygame.draw.circle(screen, self.team_color, (center_x, head_center_y), head_radius)
+        pygame.draw.circle(screen, self.team_accent, (center_x, head_center_y), head_radius, limb_width // 2) # Outline
+
+        # Torso
+        pygame.draw.line(screen, self.team_color, (center_x, neck_y), (center_x, hip_y), limb_width)
+
+        # --- Simple Limb Angles (Can be refined later if needed) ---
+        # Basic standing/walking pose
+        arm_angle_offset = math.sin(self.walk_cycle_timer) * 0.5 * self.facing_direction
+        leg_angle_offset = math.cos(self.walk_cycle_timer) * 0.6
+
+        # Arms
+        shoulder_y = neck_y + int(torso_length * 0.1)
+        r_arm_angle = -0.2 * self.facing_direction + arm_angle_offset
+        l_arm_angle = 0.2 * self.facing_direction - arm_angle_offset
+        r_elbow_x = center_x + int(math.cos(r_arm_angle) * upper_arm_length * self.facing_direction)
+        r_elbow_y = shoulder_y + int(math.sin(r_arm_angle) * upper_arm_length)
+        r_hand_x = r_elbow_x + int(math.cos(r_arm_angle - 0.3 * self.facing_direction) * forearm_length * self.facing_direction)
+        r_hand_y = r_elbow_y + int(math.sin(r_arm_angle - 0.3 * self.facing_direction) * forearm_length)
+        l_elbow_x = center_x + int(math.cos(l_arm_angle) * upper_arm_length * self.facing_direction)
+        l_elbow_y = shoulder_y + int(math.sin(l_arm_angle) * upper_arm_length)
+        l_hand_x = l_elbow_x + int(math.cos(l_arm_angle + 0.3 * self.facing_direction) * forearm_length * self.facing_direction)
+        l_hand_y = l_elbow_y + int(math.sin(l_arm_angle + 0.3 * self.facing_direction) * forearm_length)
+
+        pygame.draw.line(screen, self.team_accent, (center_x, shoulder_y), (r_elbow_x, r_elbow_y), limb_width)
+        pygame.draw.line(screen, self.team_accent, (r_elbow_x, r_elbow_y), (r_hand_x, r_hand_y), limb_width)
+        pygame.draw.line(screen, self.team_accent, (center_x, shoulder_y), (l_elbow_x, l_elbow_y), limb_width)
+        pygame.draw.line(screen, self.team_accent, (l_elbow_x, l_elbow_y), (l_hand_x, l_hand_y), limb_width)
+
+        # Legs
+        r_leg_angle = 0.1 * self.facing_direction - leg_angle_offset * self.facing_direction
+        l_leg_angle = -0.1 * self.facing_direction + leg_angle_offset * self.facing_direction
+        r_knee_x = center_x + int(math.cos(r_leg_angle) * thigh_length * self.facing_direction)
+        r_knee_y = hip_y + int(math.sin(r_leg_angle) * thigh_length)
+        r_foot_x = r_knee_x + int(math.cos(r_leg_angle + 0.4 * self.facing_direction) * shin_length * self.facing_direction)
+        r_foot_y = r_knee_y + int(math.sin(r_leg_angle + 0.4 * self.facing_direction) * shin_length)
+        l_knee_x = center_x + int(math.cos(l_leg_angle) * thigh_length * self.facing_direction)
+        l_knee_y = hip_y + int(math.sin(l_leg_angle) * thigh_length)
+        l_foot_x = l_knee_x + int(math.cos(l_leg_angle - 0.4 * self.facing_direction) * shin_length * self.facing_direction)
+        l_foot_y = l_knee_y + int(math.sin(l_leg_angle - 0.4 * self.facing_direction) * shin_length)
+
+        pygame.draw.line(screen, self.team_color, (center_x, hip_y), (r_knee_x, r_knee_y), limb_width)
+        pygame.draw.line(screen, self.team_color, (r_knee_x, r_knee_y), (r_foot_x, r_foot_y), limb_width)
+        pygame.draw.line(screen, self.team_color, (center_x, hip_y), (l_knee_x, l_knee_y), limb_width)
+        pygame.draw.line(screen, self.team_color, (l_knee_x, l_knee_y), (l_foot_x, l_foot_y), limb_width)
+
+        # --- Draw Stun Effect (If stunned) ---
         if self.is_stunned:
-            stun_font = pygame.font.Font(None, int(30 * (self.head_radius / self.base_head_radius))) # Scale font size
-            stun_text = "Zzz"
-            stun_color = (60, 60, 150) # Dark blue
-            
-            # Animate the text slightly
-            offset_y = math.sin(pygame.time.get_ticks() * 0.01) * 3 # Bob up and down
-            
-            stun_surf = stun_font.render(stun_text, True, stun_color)
-            stun_rect = stun_surf.get_rect(centerx=int(self.head_pos[0]), 
-                                           bottom=int(self.head_pos[1] - self.head_radius - 10 + offset_y))
-            screen.blit(stun_surf, stun_rect)
+            stun_angle = time.time() * 4 # Simple rotation
+            for i in range(3): # Draw 3 rotating stars
+                angle = stun_angle + (i * 2 * math.pi / 3)
+                star_x = center_x + math.cos(angle) * (head_radius + 10)
+                star_y = head_center_y + math.sin(angle) * (head_radius + 10)
+                # Simple star-like shape with lines
+                star_points = []
+                for j in range(5):
+                    angle_point = angle + (j * 2 * math.pi / 5)
+                    outer_x = star_x + math.cos(angle_point) * 6
+                    outer_y = star_y + math.sin(angle_point) * 6
+                    star_points.append((int(outer_x), int(outer_y)))
+                    angle_point += math.pi / 5
+                    inner_x = star_x + math.cos(angle_point) * 3
+                    inner_y = star_y + math.sin(angle_point) * 3
+                    star_points.append((int(inner_x), int(inner_y)))
+                pygame.draw.polygon(screen, YELLOW, star_points)
+
+        # --- TODO: Add simplified drawing for powerups (wings, sword, gun) if needed ---
+
+    def get_head_position_radius(self):
+        # Simplified calculation based on the simplified draw logic
+        head_radius = int(self.head_radius)
+        torso_length = int(self.torso_length)
+        head_center_y = int(self.y) - torso_length - head_radius
+        return (int(self.x), head_center_y), head_radius
 
     def update_limbs(self, dt, is_walking):
         # Limb Angle Calculations based on state (walking, jumping, kicking, tumbling)

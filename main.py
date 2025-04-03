@@ -113,7 +113,7 @@ SMOKE_EMISSION_RATE = 2
 debug_mode = False
 DEBUG_BG_COLOR = (220, 180, 255)
 DEBUG_MATCH_POINT_LIMIT = 1
-DEBUG_VERSION = 2 # <<< Increment version to 2
+DEBUG_VERSION = 3 # <<< Increment version to 3
 BUILD_TIMESTAMP = datetime.now().strftime("%Y-%m-%d %H:%M:%S") # <<< FIX: Remove redundant datetime.
 
 # --- Weather Effect Constants ---
@@ -265,6 +265,25 @@ def draw_rotated_rectangle(surface, color, rect_center, width, height, angle_rad
     for x, y in corners: x_rot = x * cos_a - y * sin_a; y_rot = x * sin_a + y * cos_a; rotated_corners.append((rect_center[0] + x_rot, rect_center[1] + y_rot))
     pygame.draw.polygon(surface, color, rotated_corners, 0); pygame.draw.polygon(surface, BLACK, rotated_corners, 1)
 def draw_goal_isometric(surface, goal_line_x, goal_y, goal_height, depth_x, depth_y, thickness, post_color, net_color, enlarged_height=0):
+    # --- Simple Rectangle Goal Drawing for Performance Test ---
+    effective_goal_height = goal_height + enlarged_height
+    effective_goal_y = goal_y - enlarged_height
+    post_width = thickness
+    left_post_x = goal_line_x - (abs(depth_x) if depth_x < 0 else 0) # Approximate position
+    right_post_x = goal_line_x + (abs(depth_x) if depth_x > 0 else 0) # Approximate position
+
+    left_rect = pygame.Rect(left_post_x - post_width/2, effective_goal_y, post_width, effective_goal_height)
+    right_rect = pygame.Rect(right_post_x - post_width/2, effective_goal_y, post_width, effective_goal_height)
+
+    pygame.draw.rect(surface, post_color, left_rect)
+    pygame.draw.rect(surface, post_color, right_rect)
+    # Draw a simple line as crossbar
+    pygame.draw.line(surface, post_color, left_rect.topleft, right_rect.topright, thickness)
+    return # <<< EXIT EARLY
+    # --- END Simple Rectangle Goal Drawing ---
+
+    # --- Original Isometric Goal Drawing (Commented out) ---
+    '''
     effective_goal_height = goal_height + enlarged_height
     effective_goal_y = goal_y - enlarged_height
     
@@ -314,105 +333,66 @@ def draw_goal_isometric(surface, goal_line_x, goal_y, goal_height, depth_x, dept
             surface, post_color, 
             (flt[0], flt[1] + y_offset), 
             (frt[0], frt[1] + y_offset), 
-            crossbar_thickness - abs(y_offset)  # Thinner at edges to create rounded effect
+            crossbar_thickness
         )
         
         # Back crossbar with thickness
         pygame.draw.line(
-            surface, post_color, 
-            (blt[0], blt[1] + y_offset), 
-            (brt[0], brt[1] + y_offset), 
-            (crossbar_thickness - 1) - abs(y_offset)  # Slightly thinner in back
+            surface, post_color,
+            (blt[0], blt[1] + y_offset),
+            (brt[0], brt[1] + y_offset),
+            crossbar_thickness // 2 # Thinner back crossbar
         )
         
-        # Left connector with thickness
-        pygame.draw.line(
-            surface, post_color, 
-            (flt[0], flt[1] + y_offset), 
-            (blt[0], blt[1] + y_offset), 
-            (crossbar_thickness - 1) - abs(y_offset)
-        )
-        
-        # Right connector with thickness
-        pygame.draw.line(
-            surface, post_color, 
-            (frt[0], frt[1] + y_offset), 
-            (brt[0], brt[1] + y_offset), 
-            (crossbar_thickness - 1) - abs(y_offset)
-        )
-    
-    # Draw vertical posts
-    pygame.draw.line(surface, post_color, flt, flb, post_thickness)  # Left post
-    pygame.draw.line(surface, post_color, frt, frb, post_thickness)  # Right post
-    pygame.draw.line(surface, post_color, blt, blb, post_thickness - 1)  # Back left post
-    pygame.draw.line(surface, post_color, brt, brb, post_thickness - 1)  # Back right post
-    
-    # Draw net with grid pattern (only above ground)
-    net_color_with_alpha = (net_color[0], net_color[1], net_color[2], 180)  # Add some transparency
-    
-    # Create temporary surface for drawing the net with alpha
-    net_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-    
-    # Vertical net lines on side panels (left and right)
-    num_vertical = 8
-    for i in range(1, num_vertical):
-        ratio = i / num_vertical
-        
-        # Left side panel
-        left_top = (flt[0] + (blt[0] - flt[0]) * ratio, flt[1] + (blt[1] - flt[1]) * ratio)
-        left_bottom = (flb[0] + (blb[0] - flb[0]) * ratio, flb[1])
-        pygame.draw.line(net_surf, net_color_with_alpha, left_top, left_bottom, 1)
-        
-        # Right side panel
-        right_top = (frt[0] + (brt[0] - frt[0]) * ratio, frt[1] + (brt[1] - frt[1]) * ratio)
-        right_bottom = (frb[0] + (brb[0] - frb[0]) * ratio, frb[1])
-        pygame.draw.line(net_surf, net_color_with_alpha, right_top, right_bottom, 1)
-    
-    # Horizontal net lines on side panels
-    num_horizontal = 10
-    for i in range(1, num_horizontal):
-        ratio = i / num_horizontal
-        
-        # Left side panel
-        left_front = (flt[0], flt[1] + (flb[1] - flt[1]) * ratio)
-        left_back = (blt[0], blt[1] + (blb[1] - blt[1]) * ratio)
-        pygame.draw.line(net_surf, net_color_with_alpha, left_front, left_back, 1)
-        
-        # Right side panel
-        right_front = (frt[0], frt[1] + (frb[1] - frt[1]) * ratio)
-        right_back = (brt[0], brt[1] + (brb[1] - brt[1]) * ratio)
-        pygame.draw.line(net_surf, net_color_with_alpha, right_front, right_back, 1)
-    
-    # Top panel - horizontal lines across depth
-    for i in range(1, num_vertical):
-        ratio = i / num_vertical
-        top_left = (flt[0] + (blt[0] - flt[0]) * ratio, flt[1] + (blt[1] - flt[1]) * ratio)
-        top_right = (frt[0] + (brt[0] - frt[0]) * ratio, frt[1] + (brt[1] - frt[1]) * ratio)
-        pygame.draw.line(net_surf, net_color_with_alpha, top_left, top_right, 1)
-    
-    # Top panel - horizontal lines across width
-    for i in range(1, num_horizontal):
-        ratio = i / num_horizontal
-        top_left = (flt[0] + (frt[0] - flt[0]) * ratio, flt[1])
-        top_back = (blt[0] + (brt[0] - blt[0]) * ratio, blt[1])
-        pygame.draw.line(net_surf, net_color_with_alpha, top_left, top_back, 1)
-    
-    # Back panel - vertical lines
-    for i in range(1, num_horizontal):
-        ratio = i / num_horizontal
-        back_top = (blt[0] + (brt[0] - blt[0]) * ratio, blt[1])
-        back_bottom = (blb[0] + (brb[0] - blb[0]) * ratio, blb[1])
-        pygame.draw.line(net_surf, net_color_with_alpha, back_top, back_bottom, 1)
-    
-    # Back panel - horizontal lines
-    for i in range(1, num_vertical):
-        ratio = i / num_vertical
-        back_left = (blt[0], blt[1] + (blb[1] - blt[1]) * ratio)
-        back_right = (brt[0], brt[1] + (brb[1] - brt[1]) * ratio)
-        pygame.draw.line(net_surf, net_color_with_alpha, back_left, back_right, 1)
-    
-    # Draw the net surface onto the main surface
-    surface.blit(net_surf, (0, 0))
+    # Draw vertical posts (also thicker)
+    pygame.draw.line(surface, post_color, flt, flb, post_thickness)
+    pygame.draw.line(surface, post_color, frt, frb, post_thickness)
+    pygame.draw.line(surface, post_color, blt, blb, post_thickness // 2)
+    pygame.draw.line(surface, post_color, brt, brb, post_thickness // 2)
+
+    # Draw connecting top bars (thicker)
+    pygame.draw.line(surface, post_color, flt, blt, crossbar_thickness // 2)
+    pygame.draw.line(surface, post_color, frt, brt, crossbar_thickness // 2)
+
+    # Draw net (lines between frame points)
+    # Back net (Vertical lines)
+    num_net_lines = 10
+    for i in range(1, num_net_lines):
+        lerp_factor = i / num_net_lines
+        top_x = blt[0] + (brt[0] - blt[0]) * lerp_factor
+        top_y = blt[1] + (brt[1] - blt[1]) * lerp_factor
+        bottom_x = blb[0] + (brb[0] - blb[0]) * lerp_factor
+        bottom_y = blb[1] + (brb[1] - blb[1]) * lerp_factor
+        pygame.draw.aaline(surface, net_color, (top_x, top_y), (bottom_x, bottom_y))
+    # Side nets (Vertical lines)
+    for i in range(1, num_net_lines // 2):
+        lerp_factor = i / (num_net_lines // 2)
+        # Left side
+        top_x_l = flt[0] + (blt[0] - flt[0]) * lerp_factor
+        top_y_l = flt[1] + (blt[1] - flt[1]) * lerp_factor
+        bottom_x_l = flb[0] + (blb[0] - flb[0]) * lerp_factor
+        bottom_y_l = flb[1] + (blb[1] - flb[1]) * lerp_factor
+        pygame.draw.aaline(surface, net_color, (top_x_l, top_y_l), (bottom_x_l, bottom_y_l))
+        # Right side
+        top_x_r = frt[0] + (brt[0] - frt[0]) * lerp_factor
+        top_y_r = frt[1] + (brt[1] - frt[1]) * lerp_factor
+        bottom_x_r = frb[0] + (brb[0] - frb[0]) * lerp_factor
+        bottom_y_r = frb[1] + (brb[1] - frb[1]) * lerp_factor
+        pygame.draw.aaline(surface, net_color, (top_x_r, top_y_r), (bottom_x_r, bottom_y_r))
+    # Top net (Horizontal lines)
+    for i in range(1, num_net_lines // 2):
+        lerp_factor = i / (num_net_lines // 2)
+        left_x = flt[0] + (blt[0] - flt[0]) * lerp_factor
+        left_y = flt[1] + (blt[1] - flt[1]) * lerp_factor
+        right_x = frt[0] + (brt[0] - frt[0]) * lerp_factor
+        right_y = frt[1] + (brt[1] - frt[1]) * lerp_factor
+        pygame.draw.aaline(surface, net_color, (left_x, left_y), (right_x, right_y))
+    '''
+def lerp_color(color1, color2, factor):
+    r1, g1, b1 = color1[:3]; r2, g2, b2 = color2[:3]
+    r = int(r1 + (r2 - r1) * factor); g = int(g1 + (g2 - g1) * factor); b = int(b1 + (b2 - b1) * factor)
+    return (max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b)))
+
 def draw_scoreboard(surface, p1_score, p2_score, p1_games, p2_games, score_font, name_font, game_score_font, is_goal_active):
     name_text = "Nils vs. Harry"; score_text = f"{p1_score} - {p2_score}"; game_score_text = f"({p1_games}-{p2_games})"
     score_text_color = SCOREBOARD_TEXT_FLASH_COLOR if is_goal_active else TEXT_COLOR
@@ -1514,7 +1494,7 @@ class StickMan: # Updated powerup dict/handling
             laser_world_angle = base_angle + self.gun_angle_offset
             laser_end_x = self.gun_tip_pos[0] + LASER_LENGTH * math.cos(laser_world_angle); laser_end_y = self.gun_tip_pos[1] + LASER_LENGTH * math.sin(laser_world_angle)
             try: pygame.draw.aaline(screen, LASER_COLOR, self.gun_tip_pos, (laser_end_x, laser_end_y))
-            except ValueError: pass
+            except ValueError: pass # Avoid potential errors with invalid points
         if self.is_controls_reversed:
             q_font = pygame.font.Font(None, int(24 * (self.head_radius / self.base_head_radius)))
             q_surf = q_font.render("?", True, RED)
@@ -1845,7 +1825,26 @@ class Ball:
         return hit_ground
     def is_on_ground(self): return self.y + self.radius >= GROUND_Y - 0.5
     def draw(self, screen):
+        # --- Simple Circle Drawing for Performance Test ---
         center_tuple = (int(self.x), int(self.y));
+        pygame.draw.circle(screen, WHITE, center_tuple, self.radius)
+        pygame.draw.circle(screen, BLACK, center_tuple, self.radius, 1) # Outline
+        # Draw freeze effect overlay if active (Keep this minimal effect)
+        if self.is_frozen or self.freeze_effect_timer > 0:
+            alpha = 220
+            if self.freeze_effect_timer > 0 and not self.is_frozen: alpha = int(220 * (self.freeze_effect_timer / (POWERUP_BALL_FREEZE_DURATION * 0.1)))
+            freeze_color = (173, 216, 230, max(0, min(255, alpha)))
+            shield_radius = self.radius + 3
+            temp_surf = pygame.Surface((shield_radius * 2, shield_radius * 2), pygame.SRCALPHA)
+            pygame.draw.circle(temp_surf, freeze_color, (shield_radius, shield_radius), shield_radius)
+            screen.blit(temp_surf, (int(self.x - shield_radius), int(self.y - shield_radius)))
+        return # <<< EXIT EARLY
+        # --- END Simple Circle Drawing ---
+        
+        # --- Original Pattern Drawing Logic (Commented out) ---
+        '''
+        center_tuple = (int(self.x), int(self.y));
+        # Base ball draw
         pygame.draw.circle(screen, WHITE, center_tuple, self.radius)
         pent_size = self.radius * 0.40; hex_size = self.radius * 0.42; dist_factor = 0.65; num_around = 5; angle_step = 2 * math.pi / num_around
         draw_pentagon(screen, BLACK, center_tuple, pent_size, self.rotation_angle)
@@ -1854,6 +1853,8 @@ class Ball:
             if i % 2 == 0: draw_hexagon(screen, BLACK, shape_center, hex_size, angle + self.rotation_angle * 0.5, width=1)
             else: draw_pentagon(screen, BLACK, shape_center, pent_size, angle + self.rotation_angle * 0.5)
         pygame.draw.circle(screen, BLACK, center_tuple, self.radius, 1)
+
+        # Draw freeze effect overlay if active
         if self.is_frozen or self.freeze_effect_timer > 0:
             alpha = 220
             if self.freeze_effect_timer > 0 and not self.is_frozen: alpha = int(220 * (self.freeze_effect_timer / (POWERUP_BALL_FREEZE_DURATION * 0.1)))
@@ -1866,45 +1867,28 @@ class Ball:
 
         # --- Draw Accumulated Momentum Arrow (No longer debug only) ---
         if self.is_frozen and (self.accumulated_vx != 0 or self.accumulated_vy != 0):
-            magnitude = math.sqrt(self.accumulated_vx**2 + self.accumulated_vy**2)
-            if magnitude > 0: 
-                angle = math.atan2(self.accumulated_vy, self.accumulated_vx)
-
-                # Scale arrow length based on magnitude (Using linear interpolation for clarity)
-                min_arrow_len = 10  
-                max_arrow_len = 200 
-                max_momentum_magnitude = 50.0 # Must match the cap in apply_force
-                
-                # Calculate how full the momentum is (0.0 to 1.0)
-                momentum_ratio = min(1.0, magnitude / max_momentum_magnitude) if max_momentum_magnitude > 0 else 0.0
-
-                # Linearly interpolate arrow length based on the ratio
-                arrow_length = min_arrow_len + (max_arrow_len - min_arrow_len) * momentum_ratio
-
-                # Calculate arrow end point
-                end_x = self.x + arrow_length * math.cos(angle)
-                end_y = self.y + arrow_length * math.sin(angle)
-
-                # Draw the arrow line (thicker for more power)
-                arrow_color = YELLOW
-                line_thickness = max(1, min(5, int(magnitude / 300))) 
-                pygame.draw.line(screen, arrow_color, center_tuple, (int(end_x), int(end_y)), line_thickness)
-
-                # Optional: Draw a small arrowhead
-                arrowhead_size = 10 # Slightly larger arrowhead
-                arrowhead_angle_offset = math.pi / 6 
-                
-                p1_x = end_x - arrowhead_size * math.cos(angle + arrowhead_angle_offset)
-                p1_y = end_y - arrowhead_size * math.sin(angle + arrowhead_angle_offset)
-                p2_x = end_x - arrowhead_size * math.cos(angle - arrowhead_angle_offset)
-                p2_y = end_y - arrowhead_size * math.sin(angle - arrowhead_angle_offset)
-                
-                arrowhead_points = [
-                    (int(end_x), int(end_y)), 
-                    (int(p1_x), int(p1_y)), 
-                    (int(p2_x), int(p2_y))
-                ]
-                pygame.draw.polygon(screen, arrow_color, arrowhead_points)
+            arrow_length = 30 + abs(self.accumulated_vx) * 0.2 + abs(self.accumulated_vy) * 0.2
+            arrow_angle = math.atan2(self.accumulated_vy, self.accumulated_vx)
+            arrow_end_x = self.x + arrow_length * math.cos(arrow_angle)
+            arrow_end_y = self.y + arrow_length * math.sin(arrow_angle)
+            arrow_color = (255, 0, 0, 180)
+            
+            # Draw arrow shaft
+            pygame.draw.aaline(screen, arrow_color, (int(self.x), int(self.y)), (int(arrow_end_x), int(arrow_end_y)))
+            
+            # Draw arrowhead
+            arrowhead_size = 8
+            angle1 = arrow_angle + math.pi + 0.4 # Angle for one side of arrowhead
+            angle2 = arrow_angle + math.pi - 0.4 # Angle for other side
+            p1 = (int(arrow_end_x), int(arrow_end_y))
+            p2 = (int(arrow_end_x + arrowhead_size * math.cos(angle1)), int(arrow_end_y + arrowhead_size * math.sin(angle1)))
+            p3 = (int(arrow_end_x + arrowhead_size * math.cos(angle2)), int(arrow_end_y + arrowhead_size * math.sin(angle2)))
+            try: 
+                arrow_surf = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+                pygame.draw.polygon(arrow_surf, arrow_color, [p1, p2, p3])
+                screen.blit(arrow_surf, (0,0))
+            except ValueError: pass # Avoid potential errors with invalid points
+        '''
 
 
 # --- Game Setup ---

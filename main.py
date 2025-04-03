@@ -113,7 +113,7 @@ SMOKE_EMISSION_RATE = 2
 debug_mode = False
 DEBUG_BG_COLOR = (220, 180, 255)
 DEBUG_MATCH_POINT_LIMIT = 1
-DEBUG_VERSION = 3 # <<< Increment version to 3
+DEBUG_VERSION = 4 # <<< Increment version to 4
 BUILD_TIMESTAMP = datetime.now().strftime("%Y-%m-%d %H:%M:%S") # <<< FIX: Remove redundant datetime.
 
 # --- Weather Effect Constants ---
@@ -265,25 +265,11 @@ def draw_rotated_rectangle(surface, color, rect_center, width, height, angle_rad
     for x, y in corners: x_rot = x * cos_a - y * sin_a; y_rot = x * sin_a + y * cos_a; rotated_corners.append((rect_center[0] + x_rot, rect_center[1] + y_rot))
     pygame.draw.polygon(surface, color, rotated_corners, 0); pygame.draw.polygon(surface, BLACK, rotated_corners, 1)
 def draw_goal_isometric(surface, goal_line_x, goal_y, goal_height, depth_x, depth_y, thickness, post_color, net_color, enlarged_height=0):
-    # --- Simple Rectangle Goal Drawing for Performance Test ---
-    effective_goal_height = goal_height + enlarged_height
-    effective_goal_y = goal_y - enlarged_height
-    post_width = thickness
-    left_post_x = goal_line_x - (abs(depth_x) if depth_x < 0 else 0) # Approximate position
-    right_post_x = goal_line_x + (abs(depth_x) if depth_x > 0 else 0) # Approximate position
-
-    left_rect = pygame.Rect(left_post_x - post_width/2, effective_goal_y, post_width, effective_goal_height)
-    right_rect = pygame.Rect(right_post_x - post_width/2, effective_goal_y, post_width, effective_goal_height)
-
-    pygame.draw.rect(surface, post_color, left_rect)
-    pygame.draw.rect(surface, post_color, right_rect)
-    # Draw a simple line as crossbar
-    pygame.draw.line(surface, post_color, left_rect.topleft, right_rect.topright, thickness)
-    return # <<< EXIT EARLY
-    # --- END Simple Rectangle Goal Drawing ---
-
-    # --- Original Isometric Goal Drawing (Commented out) ---
-    '''
+    # --- Restore Original Isometric Goal Drawing ---
+    # REMOVED Simplified Rectangle Goal Drawing code block
+    
+    # --- Original Isometric Goal Drawing (Uncommented) ---
+    # Remove the triple quotes
     effective_goal_height = goal_height + enlarged_height
     effective_goal_y = goal_y - enlarged_height
     
@@ -387,7 +373,7 @@ def draw_goal_isometric(surface, goal_line_x, goal_y, goal_height, depth_x, dept
         right_x = frt[0] + (brt[0] - frt[0]) * lerp_factor
         right_y = frt[1] + (brt[1] - frt[1]) * lerp_factor
         pygame.draw.aaline(surface, net_color, (left_x, left_y), (right_x, right_y))
-    '''
+
 def lerp_color(color1, color2, factor):
     r1, g1, b1 = color1[:3]; r2, g2, b2 = color2[:3]
     r = int(r1 + (r2 - r1) * factor); g = int(g1 + (g2 - g1) * factor); b = int(b1 + (b2 - b1) * factor)

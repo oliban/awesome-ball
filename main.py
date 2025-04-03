@@ -23,6 +23,7 @@ P2_COLOR_MAIN = ITALY_GREEN; P2_COLOR_ACCENT = ITALY_RED; P2_COLOR_WHITE = ITALY
 GRASS_GREEN = (34, 139, 34); YELLOW = (255, 255, 0); TEXT_COLOR = (10, 10, 50)
 ARROW_RED = (255, 50, 50); STAR_YELLOW = (255, 255, 100); STAR_ORANGE = (255, 180, 0)
 RED = (255, 0, 0)
+ORANGE = (255, 165, 0) # <<< Add Orange definition
 DEBUG_BLUE = (0, 0, 255)
 GOAL_COLOR = (220, 220, 220); GOAL_NET_COLOR = (180, 180, 190)
 GOAL_EXPLOSION_COLORS = [WHITE, YELLOW, STAR_YELLOW, (255, 215, 0)]
@@ -863,57 +864,36 @@ class StickMan: # Updated powerup dict/handling
     # Add team_color and team_accent to the arguments, with defaults
     def __init__(self, x, y, facing=1, team_color=WHITE, team_accent=BLACK):
         self.x = x; self.y = y; self.base_y = y; self.width = 20; self.height = 80; self.vx = 0; self.vy = 0; self.is_jumping = False; self.is_kicking = False; self.kick_timer = 0; self.kick_duration = 24; self.walk_cycle_timer = 0.0;
+        self.team_color = team_color; self.team_accent = team_accent
+        self.facing_direction = facing
+        self.is_flying = False; self.flight_timer = 0.0
+        self.wing_flap_angle = 0.0; self.wing_flap_speed = 4.0
+        self.active_powerups = {}
+        self.is_big = False; self.is_shrunk = False; self.is_enormous_head = False; self.is_controls_reversed = False
+        self.base_player_speed = BASE_PLAYER_SPEED; self.base_jump_power = BASE_JUMP_POWER
+        self.player_speed = self.base_player_speed; self.jump_power = self.base_jump_power
+        self.base_head_radius = 15; self.base_limb_width = 6; self.base_torso_length = 35
+        self.base_upper_arm_length = 25; self.base_forearm_length = 22
+        self.base_thigh_length = 30; self.base_shin_length = 28
+        self.base_nose_length = self.base_head_radius * 0.5 # <<< Lägg tillbaka denna
+        self.base_nose_width = self.base_head_radius * 0.3 # <<< Lägg tillbaka denna
+        self.calculate_current_sizes()
+        self.is_tumbling = False; self.rotation_angle = 0; self.rotation_velocity = 0
+        self.l_upper_arm_angle = 0; self.r_upper_arm_angle = 0; self.l_forearm_angle = 0; self.r_forearm_angle = 0
+        self.l_thigh_angle = 0; self.r_thigh_angle = 0; self.l_shin_angle = 0; self.r_shin_angle = 0
+        self.hip_pos = (0,0); self.neck_pos = (0,0); self.head_pos = (0,0); self.shoulder_pos = (0,0)
+        self.l_elbow_pos = (0,0); self.l_hand_pos = (0,0); self.r_elbow_pos = (0,0); self.r_hand_pos = (0,0)
+        self.l_knee_pos = (0,0); self.l_foot_pos = (0,0); self.r_knee_pos = (0,0); self.r_foot_pos = (0,0)
+        self.body_rect = pygame.Rect(0,0,0,0)
+        self.gun_pos = (0,0); self.gun_tip_pos = (0,0); self.gun_angle_offset = 0; self.gun_recoil_timer = 0
+        self.is_sword = False # Sword status
+        self.sword_angle = 0 # Current sword angle relative to arm
+        self.sword_anim_timer = 0 # Sword animation timer
+        self.on_other_player_head = False; self.on_left_crossbar = False; self.on_right_crossbar = False # Added crossbar flags
+        self.is_stunned = False; self.stun_timer = 0.0 # Stun related
+        self.nose_color = ORANGE # <<< Initialize nose_color
+        self.randomize_nose() # <<< Call randomize_nose
 
-        # --- Assign Team Colors FIRST ---
-        # Assign the passed arguments to the instance attributes
-        self.team_color = team_color
-        self.team_accent = team_accent
-        self.eye_color = BLACK # Assign eye color here too
-
-        # --- Base size attributes ---
-        self.base_head_radius = 12  # Changed back from 15 to original 12
-        self.base_torso_length = 36; self.base_limb_width = 10; self.base_upper_arm_length = 12; self.base_forearm_length = 12; self.base_thigh_length = 14; self.base_shin_length = 14; self.base_nose_length = self.base_head_radius * 0.5; self.base_nose_width = self.base_head_radius * 0.3
-        # --- Current size attributes (initially same as base) ---
-        self.head_radius = self.base_head_radius; self.torso_length = self.base_torso_length; self.limb_width = self.base_limb_width; self.upper_arm_length = self.base_upper_arm_length; self.forearm_length = self.base_forearm_length; self.thigh_length = self.base_thigh_length; self.shin_length = self.base_shin_length; self.current_nose_length = self.base_nose_length; self.current_nose_width = self.base_nose_width
-
-        # --- Use Team Colors ---
-        # This block now correctly uses the assigned self.team_color and self.team_accent
-        self.torso_colors = [self.team_color, self.team_accent, self.team_color]
-        self.arm_colors = [self.team_accent, self.team_color]
-        self.leg_colors = [self.team_color, self.team_accent]
-        self.cap_color = self.team_accent # Use accent for cap
-        self.cap_brim_color = BLACK
-
-        # --- Animation & State Attributes ---
-        self.l_upper_arm_angle = 0; self.r_upper_arm_angle = 0; self.l_forearm_angle = 0; self.r_forearm_angle = 0; self.l_thigh_angle = 0; self.r_thigh_angle = 0; self.l_shin_angle = 0; self.r_shin_angle = 0; self.head_pos = (0, 0); self.neck_pos = (0, 0); self.hip_pos = (0, 0); self.shoulder_pos = (0, 0); self.l_elbow_pos = (0, 0); self.r_elbow_pos = (0, 0); self.l_hand_pos = (0, 0); self.r_hand_pos = (0, 0); self.l_knee_pos = (0, 0); self.r_knee_pos = (0, 0); self.l_foot_pos = (0, 0); self.r_foot_pos = (0, 0); self.body_rect = pygame.Rect(0,0,0,0); self.facing_direction = facing; self.on_other_player_head = False
-        
-        # --- Crossbar Standing Variables ---
-        self.on_left_crossbar = False
-        self.on_right_crossbar = False
-
-        # --- Wing Attributes (if applicable) ---
-        self.wing_color = (173, 216, 230); self.wing_outline_color = (50, 50, 100); self.wing_rest_angle_offset = math.pi * 0.1 + (math.pi / 6); self.l_wing_base_angle = math.pi + self.wing_rest_angle_offset; self.r_wing_base_angle = -self.wing_rest_angle_offset; self.l_wing_upper_angle = self.l_wing_base_angle - 0.4; self.l_wing_lower_angle = self.l_wing_base_angle + 0.6; self.r_wing_upper_angle = self.r_wing_base_angle + 0.4; self.r_wing_lower_angle = self.r_wing_base_angle - 0.6; self.wing_flap_timer = 0.0; self.wing_flap_duration = 0.2; self.wing_flapping = False; self.wing_flap_magnitude = math.pi * 0.4; self.wing_upper_lobe_size = (30, 22); self.wing_lower_lobe_size = (28, 25)
-
-        # --- Sword Attributes ---
-        self.is_sword = False
-        self.sword_angle = 0
-
-        # --- Powerups and State ---
-        self.active_powerups = {} # Updated powerup dict/handling
-        self.is_flying = False; self.is_big = False; self.is_shrunk = False; self.is_enormous_head = False; self.is_penguin = False # Added penguin state
-        self.jump_power = BASE_JUMP_POWER; self.player_speed = BASE_PLAYER_SPEED; self.is_controls_reversed = False
-        self.head_pulse_timer = 0.0 # For enormous head pulse
-        self.gun_anim_timer = random.uniform(0, 2 * math.pi); self.gun_angle_offset = 0.0; self.gun_tip_pos = (0, 0)
-        self.is_tumbling = False; self.tumble_timer = 0.0; self.rotation_angle = 0.0; self.rotation_velocity = 0.0
-        
-        # --- Stun Variables ---
-        self.stun_timer = 0.0
-        self.is_stunned = False
-        
-        self.head_bounce_timer = 0
-        self.head_bounce_intensity = 0
-        self.eye_size = 3
-        
     def start_stun(self, duration): # New method
         """Starts the stun effect on the player."""
         if not self.is_stunned: # Prevent stun-locking

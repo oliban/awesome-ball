@@ -1615,27 +1615,32 @@ class Ball:
     def apply_force(self, force_x, force_y, hitter='player'):
         # If frozen, accumulate force instead of applying directly
         if self.is_frozen:
-             # Reduce the force being accumulated (Now by 80%)
-             accum_force_x = force_x * 0.2
+             # Reduce the force being accumulated (Still 80% reduction)
+             accum_force_x = force_x * 0.2 
              accum_force_y = force_y * 0.2
              
-             max_accum_vel = 1500 # Keep the overall limit
-             new_accum_vx = self.accumulated_vx + accum_force_x # Use reduced force
-             new_accum_vy = self.accumulated_vy + accum_force_y # Use reduced force
-             
-             # Clamp individual components
-             self.accumulated_vx = max(-max_accum_vel, min(max_accum_vel, new_accum_vx))
-             self.accumulated_vy = max(-max_accum_vel, min(max_accum_vel, new_accum_vy))
-             
-             # Optionally, clamp the magnitude of the accumulated velocity vector
-             accum_mag_sq = self.accumulated_vx**2 + self.accumulated_vy**2
-             if accum_mag_sq > max_accum_vel**2:
-                 scale_factor = max_accum_vel / math.sqrt(accum_mag_sq)
-                 self.accumulated_vx *= scale_factor
-                 self.accumulated_vy *= scale_factor
+             # Calculate potential new momentum
+             new_accum_vx = self.accumulated_vx + accum_force_x
+             new_accum_vy = self.accumulated_vy + accum_force_y
+
+             # Cap the MAGNITUDE of the accumulated momentum at 50
+             max_momentum_magnitude = 50.0
+             current_momentum_magnitude_sq = new_accum_vx**2 + new_accum_vy**2
+
+             if current_momentum_magnitude_sq > max_momentum_magnitude**2:
+                 scale_factor = max_momentum_magnitude / math.sqrt(current_momentum_magnitude_sq)
+                 self.accumulated_vx = new_accum_vx * scale_factor
+                 self.accumulated_vy = new_accum_vy * scale_factor
+                 print(f"Frozen ball momentum capped at {max_momentum_magnitude}!")
+             else:
+                 # Apply the momentum if it's within the cap
+                 self.accumulated_vx = new_accum_vx
+                 self.accumulated_vy = new_accum_vy
                  
+             # Removed the old clamping logic
              print(f"Frozen ball hit! Accumulated momentum: vx={self.accumulated_vx:.1f}, vy={self.accumulated_vy:.1f}")
         else:
+             # Apply force normally if not frozen
              self.vx += force_x
              self.vy += force_y
              self.last_hit_by = hitter
@@ -1849,17 +1854,21 @@ class Ball:
             screen.blit(temp_surf, (int(self.x - shield_radius), int(self.y - shield_radius)))
 
         # --- Draw Accumulated Momentum Arrow (No longer debug only) ---
-        if self.is_frozen and (self.accumulated_vx != 0 or self.accumulated_vy != 0): # Removed debug_mode check
-            # Calculate magnitude and angle of accumulated momentum
+        if self.is_frozen and (self.accumulated_vx != 0 or self.accumulated_vy != 0):
             magnitude = math.sqrt(self.accumulated_vx**2 + self.accumulated_vy**2)
             if magnitude > 0: 
                 angle = math.atan2(self.accumulated_vy, self.accumulated_vx)
 
-                # Scale arrow length based on magnitude (More dramatic scaling)
-                min_arrow_len = 10  # Lower min length
-                max_arrow_len = 200 # Higher max length
-                scale_factor = 0.2  # Increased scale factor
-                arrow_length = min(max_arrow_len, max(min_arrow_len, magnitude * scale_factor))
+                # Scale arrow length based on magnitude (Using linear interpolation for clarity)
+                min_arrow_len = 10  
+                max_arrow_len = 200 
+                max_momentum_magnitude = 50.0 # Must match the cap in apply_force
+                
+                # Calculate how full the momentum is (0.0 to 1.0)
+                momentum_ratio = min(1.0, magnitude / max_momentum_magnitude) if max_momentum_magnitude > 0 else 0.0
+
+                # Linearly interpolate arrow length based on the ratio
+                arrow_length = min_arrow_len + (max_arrow_len - min_arrow_len) * momentum_ratio
 
                 # Calculate arrow end point
                 end_x = self.x + arrow_length * math.cos(angle)

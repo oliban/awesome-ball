@@ -495,6 +495,22 @@ SWORD_HIT_FORCE = 10  # Decreased from original value to reduce ball power
 SWORD_PLAYER_HIT_FORCE = 500.0 # Horizontal force on player
 SWORD_PLAYER_UPWARD_BOOST = 250.0 # Upward force on player
 
+# --- Powerup Colors (For Debug Display) ---
+powerup_colors = {
+    "FLIGHT": (135, 206, 250),       # Light blue 
+    "ROCKET_LAUNCHER": (255, 100, 100), # Red
+    "BIG_PLAYER": (255, 140, 0),     # Orange
+    "SUPER_JUMP": (127, 255, 0),     # Green
+    "BALL_FREEZE": (0, 191, 255),    # Deep sky blue
+    "SPEED_BOOST": (255, 255, 0),    # Yellow
+    "GOAL_SHIELD": (138, 43, 226),   # Purple
+    "SHRINK_OPPONENT": (255, 20, 147), # Pink
+    "LOW_GRAVITY": (70, 130, 180),   # Steel blue
+    "REVERSE_CONTROLS": (255, 99, 71), # Tomato
+    "GOAL_ENLARGER": (255, 215, 0),  # Gold
+    "SWORD": (192, 192, 192)         # Silver
+}
+
 # --- Class Definitions ---
 class Particle: # ... (no change) ...
     def __init__(self, x, y, colors=[STAR_YELLOW, STAR_ORANGE, WHITE], speed_min=PARTICLE_SPEED * 0.5, speed_max=PARTICLE_SPEED * 1.5, lifespan=PARTICLE_LIFESPAN, size=PARTICLE_SIZE, p_type='star', angle_override=None):
@@ -2192,6 +2208,7 @@ last_fps = 0.0 # Variable to store the last calculated FPS
 # --- Weather Variables ---
 current_weather = random.choice(WEATHER_TYPES)
 weather_particles = []
+selected_powerup_index = 0  # Index för nästa power-up som ska spawnas (för debug-läge)
 weather_wind_change_timer = 15.0  # Time until wind direction changes
 
 
@@ -2666,6 +2683,24 @@ while running:
                     start_new_game()
                 elif game_over:
                     start_new_game()
+            # Debug-mode power-up selection and spawning
+            elif debug_mode and match_active and event.key == pygame.K_v:
+                # Skifta till nästa power-up i listan
+                selected_powerup_index = (selected_powerup_index + 1) % len(POWERUP_TYPES)
+                print(f"DEBUG: Selected power-up changed to {POWERUP_TYPES[selected_powerup_index]}")
+            elif debug_mode and match_active and event.key == pygame.K_b:
+                # Spawna den valda power-upen
+                p_type = POWERUP_TYPES[selected_powerup_index]
+                print(f"DEBUG: Spawning selected power-up: {p_type}")
+                new_powerup = ParachutePowerup()
+                new_powerup.active = True
+                new_powerup.powerup_type = p_type
+                spawn_x = random.uniform(SCREEN_WIDTH * 0.3, SCREEN_WIDTH * 0.7) 
+                new_powerup.x = spawn_x
+                new_powerup.y = -new_powerup.chute_radius * 2
+                new_powerup.vx = random.uniform(-POWERUP_DRIFT_SPEED / 2, POWERUP_DRIFT_SPEED / 2)
+                active_powerups.append(new_powerup)
+                print(f"Power-up spawned: {p_type} at ({new_powerup.x:.0f}, {new_powerup.y:.0f})")
             # Lägg till hantering för hopp och spark
             elif match_active and current_game_state == "PLAYING": 
                 if not player1.is_tumbling and not player1.is_stunned:
@@ -3281,7 +3316,44 @@ while running:
 
         # Debug info
     if debug_mode:
-            pass  # Add any additional debug info here
+            # Add debug info showing available powerups and key mapping
+            debug_font = pygame.font.SysFont("Arial", 14)
+            
+            # Create a semi-transparent background
+            debug_bg = pygame.Surface((350, 160), pygame.SRCALPHA)
+            debug_bg.fill((0, 0, 0, 150))
+            screen.blit(debug_bg, (10, 10))
+            
+            # Title
+            debug_title = debug_font.render("DEBUG MODE: POWERUP HOTKEYS", True, (255, 255, 0))
+            screen.blit(debug_title, (20, 15))
+            
+            # Draw powerup hotkeys (F1-F12 and 0)
+            for i, ptype in enumerate(POWERUP_TYPES[:12]):  # Show up to 12 powerups
+                # Calculate position based on row and column
+                col = i // 4  # Integer division to get column (0, 1, 2)
+                row = i % 4   # Modulo to get row (0, 1, 2, 3)
+                x_pos = 20 + (col * 110)
+                y_pos = 35 + (row * 20)
+                
+                # Determine key name
+                key_name = f"F{i+1}"
+                if i == 9:  # Special case for 10th powerup (index 9)
+                    key_name = "0"
+                    
+                # Render text with appropriate color
+                text = f"{key_name}: {ptype}"
+                color = powerup_colors.get(ptype, WHITE)
+                debug_text = debug_font.render(text, True, color)
+                screen.blit(debug_text, (x_pos, y_pos))
+
+            # Add weather control info
+            weather_text = debug_font.render("4: Change Weather, 6: Random Powerup, 5: Sword", True, (200, 200, 255))
+            screen.blit(weather_text, (20, 125))
+            
+            # Add active particles/powerups count for performance monitoring
+            counts_text = debug_font.render(f"Particles: {len(particles)}, Powerups: {len(active_powerups)}, Rockets: {len(active_rockets)}", True, (180, 180, 180))
+            screen.blit(counts_text, (20, 145))
 
     # Draw FPS Counter (Moved to correct location before flip)
     if current_game_state == "PLAYING" and debug_mode: # Only draw FPS during gameplay AND in debug mode
@@ -3294,6 +3366,22 @@ while running:
         bg_fps_surf.fill((0, 0, 0, 120))
         screen.blit(bg_fps_surf, bg_fps_rect.topleft)
         screen.blit(fps_surf, fps_rect)
+        
+        # Visa nästa power-up som kan spawnas med B
+        if match_active:
+            selected_powerup = POWERUP_TYPES[selected_powerup_index]
+            powerup_color = powerup_colors.get(selected_powerup, WHITE)
+            next_powerup_text = f"Nästa power-up (V=byt, B=spawna): {selected_powerup}"
+            next_powerup_surf = font_fps.render(next_powerup_text, True, powerup_color)
+            next_powerup_rect = next_powerup_surf.get_rect(midbottom=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 10))
+            
+            # Bakgrund för läsbarhet
+            bg_powerup_rect = next_powerup_rect.inflate(20, 8)
+            bg_powerup_surf = pygame.Surface(bg_powerup_rect.size, pygame.SRCALPHA)
+            bg_powerup_surf.fill((0, 0, 0, 180))
+            
+            screen.blit(bg_powerup_surf, bg_powerup_rect.topleft)
+            screen.blit(next_powerup_surf, next_powerup_rect)
 
     pygame.display.flip()
 

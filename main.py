@@ -118,7 +118,14 @@ DEBUG_BG_COLOR = (220, 180, 255)
 DEBUG_MATCH_POINT_LIMIT = 1
 
 # --- Weather Effect Constants ---
-WEATHER_TYPES = ["SUNNY", "RAINY", "WINDY", "SNOWY", "FOGGY", "GOTHENBURG_WEATHER"]
+WEATHER_TYPES = [ # Added list of possible weather types
+    "SUNNY",
+    "RAINY",
+    "WINDY",
+    "SNOWY",
+    "FOGGY",
+    # "GOTHENBURG_WEATHER" # <<< Temporarily disabled
+]
 WEATHER_EFFECTS = {
     "SUNNY": {"gravity": 1.0, "background_color": (135, 206, 235)},  # Normal conditions
     "RAINY": {"gravity": 1.05, "background_color": (100, 149, 180)},  # Wet conditions
@@ -3386,6 +3393,32 @@ while running:
     pygame.display.flip()
 
     # Removed FPS counter code from here
+
+    # --- Handle Game Over State ---
+    if game_over and not game_over_sound_played:
+        play_sound(loaded_sounds['nils_wins'] if overall_winner == 1 else loaded_sounds['harry_wins'])
+        game_over_sound_played = True
+
+    # --- Handle Match Over State ---
+    # <<< START OF ADDED CODE >>>
+    if match_over_timer > 0:
+        match_over_timer -= dt # Decrement timer
+        if not match_end_sound_played and not game_over:
+            # Play win sound only if game isn't completely over
+            play_sound(loaded_sounds['nils_wins'] if match_winner == 1 else loaded_sounds['harry_wins'])
+            match_end_sound_played = True
+        
+        if match_over_timer <= 0: # Check if timer expired
+            if not game_over: # If game not over, start new match
+                start_new_match() 
+                # match_active is set to True inside start_new_match()
+            # If game IS over, we do nothing here, 
+            # the game remains in the game_over state
+    # <<< END OF ADDED CODE >>>
+
+    # --- Process Announcement Sound Queue ---
+    if announcement_queue and not pygame.mixer.get_busy():
+        play_next_announcement()
 
 # Cleanup
 pygame.quit(); sys.exit()

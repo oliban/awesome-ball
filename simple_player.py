@@ -5,7 +5,7 @@ import random
 # Constants from main.py that we need
 GRAVITY = 0.9
 BASE_PLAYER_SPEED = 3.0
-BASE_JUMP_POWER = -0.03
+BASE_JUMP_POWER = -0.4
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 RED = (255, 0, 0)
@@ -299,7 +299,11 @@ class SimpleStickMan:
             # Explicit removal of goal stand state
             self.on_left_crossbar = False
             self.on_right_crossbar = False
-            self.vy = self.jump_power
+            # 10% högre hopphöjd (mer negativa värden)
+            if "SUPER_JUMP" in self.active_powerups:
+                self.vy = -18.7  # 10% ökning från -17.0
+            else:
+                self.vy = -14.85  # 10% ökning från -13.5
             self.walk_cycle_timer = 0
     
     def start_kick(self):

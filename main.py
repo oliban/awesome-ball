@@ -11,6 +11,9 @@ from datetime import datetime
 # Third-party imports next
 import pygame
 
+# Local imports
+import simple_player
+
 # --- Get Timestamp ---
 GENERATION_TIMESTAMP = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -2262,6 +2265,12 @@ def start_new_match(): # Full reset for new match
         # queue_sound(loaded_sounds[weather_sound_key]) # Uncomment later if sound queuing is desired
 def start_new_game(): # Full reset
     global p1_games_won, p2_games_won, game_scores, game_over, overall_winner, announcement_queue, game_over_sound_played, active_powerups
+    global player1, player2 # Add player instances to global
+    
+    # Create new SimpleStickMan instances instead of StickMan
+    player1 = simple_player.SimpleStickMan(SCREEN_WIDTH // 4, GROUND_Y, facing=1, team_color=P1_COLOR_MAIN, team_accent=P1_COLOR_ACCENT)
+    player2 = simple_player.SimpleStickMan(SCREEN_WIDTH * 3 // 4, GROUND_Y, facing=-1, team_color=P2_COLOR_MAIN, team_accent=P2_COLOR_ACCENT)
+    
     p1_games_won = 0; p2_games_won = 0; game_scores = []; game_over = False; overall_winner = None; game_over_sound_played = False
     active_powerups = []
     announcement_queue = []; start_new_match(); print("Starting new game.")

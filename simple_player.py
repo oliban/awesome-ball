@@ -290,7 +290,7 @@ class SimpleStickMan:
             if not self.is_kicking:
                 can_jump_now = True
         else:
-            if (not self.is_jumping or self.on_other_player_head) and not self.is_kicking:
+            if (not self.is_jumping or self.on_other_player_head or self.on_left_crossbar or self.on_right_crossbar) and not self.is_kicking:
                 can_jump_now = True
                 
         if can_jump_now:
@@ -398,28 +398,104 @@ class SimpleStickMan:
         dist_x_head = self.x - other_head_pos[0]
         is_aligned_for_head = abs(dist_x_head) < (other_head_radius + self.head_radius + HEAD_PLATFORM_RADIUS_BUFFER)
         
+        # Kontrollera avståndet till markytan för andra spelarens huvud
+        dist_y_head = self.y - head_top_y
+        can_stand_on_head = dist_y_head >= -5 and dist_y_head <= 15
+        
+        # Konstanter för målribborna (crossbar)
+        # Utökad bredd för att täcka hela målet
+        LEFT_CROSSBAR_X = 40  # GOAL_LINE_X_LEFT
+        RIGHT_CROSSBAR_X = 760  # GOAL_LINE_X_RIGHT
+        BASE_CROSSBAR_Y = 415  # GOAL_Y_POS
+        CROSSBAR_WIDTH = 120  # Utökad bredd för att täcka hela vägen till målen
+        
+        # Anpassa målribbans höjd utifrån om förstorad-mål-powerup är aktiv
+        # Vi simulerar power-up genom att kolla om andra spelaren har power-upen "ENLARGE_GOAL"
+        # Vänster mål tillhör spelare 2, höger mål tillhör spelare 1
+        
+        LEFT_ENLARGED = "ENLARGE_GOAL" in other_player.active_powerups and self.facing_direction == 1
+        RIGHT_ENLARGED = "ENLARGE_GOAL" in self.active_powerups and self.facing_direction == -1
+        
+        GOAL_ENLARGER_HEIGHT = 40  # POWERUP_GOAL_ENLARGER_HEIGHT_INCREASE
+        
+        LEFT_CROSSBAR_Y = BASE_CROSSBAR_Y - (GOAL_ENLARGER_HEIGHT if LEFT_ENLARGED else 0)
+        RIGHT_CROSSBAR_Y = BASE_CROSSBAR_Y - (GOAL_ENLARGER_HEIGHT if RIGHT_ENLARGED else 0)
+        
+        # Kontrollera avstånd till målribborna
+        dist_left_crossbar = abs(self.x - LEFT_CROSSBAR_X)
+        dist_right_crossbar = abs(self.x - RIGHT_CROSSBAR_X)
+        
+        dist_y_left_crossbar = self.y - LEFT_CROSSBAR_Y
+        dist_y_right_crossbar = self.y - RIGHT_CROSSBAR_Y
+        
+        # Utökad detection för ribban över hela målområdet
+        is_aligned_for_left_crossbar = self.x <= LEFT_CROSSBAR_X + 45  # Halvvägs mellan tidigare (30) och för lång (60)
+        is_aligned_for_right_crossbar = self.x >= RIGHT_CROSSBAR_X - 45  # Halvvägs mellan tidigare (30) och för lång (60)
+        
+        can_stand_on_left_crossbar = dist_y_left_crossbar >= -5 and dist_y_left_crossbar <= 10
+        can_stand_on_right_crossbar = dist_y_right_crossbar >= -5 and dist_y_right_crossbar <= 10
+        
         # Apply gravity if not on a platform
-        if not self.on_other_player_head:
+        if not self.on_other_player_head and not self.on_left_crossbar and not self.on_right_crossbar:
             self.vy += current_gravity
         elif self.on_other_player_head and not is_aligned_for_head:
             self.on_other_player_head = False
             self.is_jumping = True
             self.vy += current_gravity
+        elif self.on_left_crossbar and not is_aligned_for_left_crossbar:
+            self.on_left_crossbar = False
+            self.is_jumping = True
+            self.vy += current_gravity
+        elif self.on_right_crossbar and not is_aligned_for_right_crossbar:
+            self.on_right_crossbar = False
+            self.is_jumping = True
+            self.vy += current_gravity
         
-        # Set explicit on_crossbar to False temporarily - will be handled later
-        self.on_left_crossbar = False
-        self.on_right_crossbar = False
+        # Hantera landning på en annan spelares huvud eller målribban
+        if self.is_jumping and self.vy > 0:  # Fallande
+            # Kontrollera om vi kan landa på den andra spelarens huvud
+            if is_aligned_for_head and can_stand_on_head and not self.on_other_player_head:
+                self.on_other_player_head = True
+                self.is_jumping = False
+                self.vy = 0
+                self.y = head_top_y  # Placera fötterna på huvudet
+            
+            # Kontrollera om vi kan landa på vänster målribba
+            elif is_aligned_for_left_crossbar and can_stand_on_left_crossbar and not self.on_left_crossbar:
+                self.on_left_crossbar = True
+                self.on_right_crossbar = False
+                self.is_jumping = False
+                self.vy = 0
+                self.y = LEFT_CROSSBAR_Y  # Placera fötterna på målribban
+            
+            # Kontrollera om vi kan landa på höger målribba
+            elif is_aligned_for_right_crossbar and can_stand_on_right_crossbar and not self.on_right_crossbar:
+                self.on_left_crossbar = False
+                self.on_right_crossbar = True
+                self.is_jumping = False
+                self.vy = 0
+                self.y = RIGHT_CROSSBAR_Y  # Placera fötterna på målribban
         
         # Update positions
         self.x += self.vx
-        if self.is_jumping or not self.on_other_player_head:
+        if self.is_jumping or (not self.on_other_player_head and not self.on_left_crossbar and not self.on_right_crossbar):
             self.y += self.vy
+        elif self.on_other_player_head:
+            # Följ den andra spelarens rörelser
+            self.y = head_top_y
+        elif self.on_left_crossbar:
+            self.y = LEFT_CROSSBAR_Y
+        elif self.on_right_crossbar:
+            self.y = RIGHT_CROSSBAR_Y
         
         # Ground collision
         if self.y >= self.base_y:
             self.y = self.base_y
             self.vy = 0
             self.is_jumping = False
+            self.on_other_player_head = False
+            self.on_left_crossbar = False
+            self.on_right_crossbar = False
         
         # Update kick state
         if self.is_kicking:

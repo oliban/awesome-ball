@@ -1782,7 +1782,7 @@ class Ball:
     def update(self, dt):
         if debug_mode and dt > 0:  # Add debug output for ball height
             screen_height_percent = ((SCREEN_HEIGHT - self.y) / SCREEN_HEIGHT) * 100
-            print(f"Ball height: {SCREEN_HEIGHT - self.y:.1f} ({screen_height_percent:.1f}% of screen)")
+            # print(f"Ball height: {SCREEN_HEIGHT - self.y:.1f} ({screen_height_percent:.1f}% of screen)")
             
         if self.freeze_effect_timer > 0: self.freeze_effect_timer -= dt
         if self.is_frozen: return False # Don't update position if frozen

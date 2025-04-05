@@ -1,4 +1,5 @@
 - [X] The game freezes after a match is won, maybe relating to weather?
+- [X] Remove the ball height debug output spam in console
 - [ ] Goal sheild is not visible nor working
 - [ ] Rocket launcher is MIA
 - [ ] Packages don't seem to be dropping by themself any more

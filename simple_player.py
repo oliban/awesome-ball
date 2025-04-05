@@ -5,7 +5,7 @@ import random
 # Constants from main.py that we need
 GRAVITY = 0.9
 BASE_PLAYER_SPEED = 3.0
-BASE_JUMP_POWER = -0.02
+BASE_JUMP_POWER = -0.03
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 RED = (255, 0, 0)

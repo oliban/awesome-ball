@@ -1,8 +1,10 @@
 - [X] The game freezes after a match is won, maybe relating to weather?
 - [X] Remove the ball height debug output spam in console
+- [ ] Fix so that index.html actually use the right APK that is rendered by pygbab
 - [ ] Goal sheild is not visible nor working
+- [ ] Enlarged goal, no effect
+- [X] Added button 2 to spawn Goal enlarger power-up for debugging
 - [ ] Rocket launcher is MIA
 - [ ] Packages don't seem to be dropping by themself any more
-- [ ] Enlarged goal, no effect
 - [ ] The angle of the sword is not right, it must be the same angle from the player no matter withc direction the player is facing and have that mirrored when the player changes direction
 - [ ] Go through every power-up to make sure they all work properly 

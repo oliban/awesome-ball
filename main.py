@@ -2684,6 +2684,19 @@ while running:
                     print(f"Powerup spawned: BALL_FREEZE at ({new_powerup.x:.0f}, {new_powerup.y:.0f})")
                 else:
                     print("DEBUG: Match inactive, cannot spawn BALL_FREEZE.")
+            elif event.key == pygame.K_2: # New debug key for GOAL_ENLARGER
+                if match_active:
+                    print("DEBUG: Spawning GOAL_ENLARGER powerup.")
+                    new_powerup = ParachutePowerup()
+                    new_powerup.active = True
+                    new_powerup.powerup_type = "GOAL_ENLARGER"
+                    new_powerup.x = random.randint(GOAL_MARGIN_X + 50, SCREEN_WIDTH - GOAL_MARGIN_X - 50)
+                    new_powerup.y = -new_powerup.chute_radius * 2
+                    new_powerup.vx = random.uniform(-POWERUP_DRIFT_SPEED, POWERUP_DRIFT_SPEED)
+                    active_powerups.append(new_powerup)
+                    print(f"Powerup spawned: GOAL_ENLARGER at ({new_powerup.x:.0f}, {new_powerup.y:.0f})")
+                else:
+                    print("DEBUG: Match inactive, cannot spawn GOAL_ENLARGER.")
             elif event.key == pygame.K_r: 
                 if current_game_state == "WELCOME": # Check game state
                     current_game_state = "PLAYING" # Change game state

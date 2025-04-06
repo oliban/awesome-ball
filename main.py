@@ -3292,7 +3292,44 @@ while running:
 
         # Debug info
     if debug_mode:
-            pass  # Add any additional debug info here
+            # Add debug info showing available powerups and key mapping
+            debug_font = pygame.font.SysFont("Arial", 14)
+            
+            # Create a semi-transparent background
+            debug_bg = pygame.Surface((350, 160), pygame.SRCALPHA)
+            debug_bg.fill((0, 0, 0, 150))
+            screen.blit(debug_bg, (10, 10))
+            
+            # Title
+            debug_title = debug_font.render("DEBUG MODE: POWERUP HOTKEYS", True, (255, 255, 0))
+            screen.blit(debug_title, (20, 15))
+            
+            # Draw powerup hotkeys (F1-F12 and 0)
+            for i, ptype in enumerate(POWERUP_TYPES[:12]):  # Show up to 12 powerups
+                # Calculate position based on row and column
+                col = i // 4  # Integer division to get column (0, 1, 2)
+                row = i % 4   # Modulo to get row (0, 1, 2, 3)
+                x_pos = 20 + (col * 110)
+                y_pos = 35 + (row * 20)
+                
+                # Determine key name
+                key_name = f"F{i+1}"
+                if i == 9:  # Special case for 10th powerup (index 9)
+                    key_name = "0"
+                    
+                # Render text with appropriate color
+                text = f"{key_name}: {ptype}"
+                color = powerup_colors.get(ptype, WHITE)
+                debug_text = debug_font.render(text, True, color)
+                screen.blit(debug_text, (x_pos, y_pos))
+
+            # Add weather control info
+            weather_text = debug_font.render("4: Change Weather, 6: Random Powerup, 5: Sword", True, (200, 200, 255))
+            screen.blit(weather_text, (20, 125))
+            
+            # Add active particles/powerups count for performance monitoring
+            counts_text = debug_font.render(f"Particles: {len(particles)}, Powerups: {len(active_powerups)}, Rockets: {len(active_rockets)}", True, (180, 180, 180))
+            screen.blit(counts_text, (20, 145))
 
     # Draw FPS Counter (Moved to correct location before flip)
     if current_game_state == "PLAYING" and debug_mode: # Only draw FPS during gameplay AND in debug mode
@@ -3305,6 +3342,34 @@ while running:
         bg_fps_surf.fill((0, 0, 0, 120))
         screen.blit(bg_fps_surf, bg_fps_rect.topleft)
         screen.blit(fps_surf, fps_rect)
+        
+        # Display build timestamp under FPS
+        timestamp_text = f"Build: {BUILD_TIMESTAMP}"
+        timestamp_surf = font_fps.render(timestamp_text, True, WHITE)
+        timestamp_rect = timestamp_surf.get_rect(topright=(SCREEN_WIDTH - 10, fps_rect.bottom + 2))
+        
+        # Add background for timestamp
+        bg_timestamp_rect = timestamp_rect.inflate(6, 4)
+        bg_timestamp_surf = pygame.Surface(bg_timestamp_rect.size, pygame.SRCALPHA)
+        bg_timestamp_surf.fill((0, 0, 0, 120))
+        screen.blit(bg_timestamp_surf, bg_timestamp_rect.topleft)
+        screen.blit(timestamp_surf, timestamp_rect)
+        
+        # Visa nästa power-up som kan spawnas med B
+        if match_active:
+            selected_powerup = POWERUP_TYPES[selected_powerup_index]
+            powerup_color = powerup_colors.get(selected_powerup, WHITE)
+            next_powerup_text = f"Nästa power-up (V=byt, B=spawna): {selected_powerup}"
+            next_powerup_surf = font_fps.render(next_powerup_text, True, powerup_color)
+            next_powerup_rect = next_powerup_surf.get_rect(midbottom=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 10))
+            
+            # Bakgrund för läsbarhet
+            bg_powerup_rect = next_powerup_rect.inflate(20, 8)
+            bg_powerup_surf = pygame.Surface(bg_powerup_rect.size, pygame.SRCALPHA)
+            bg_powerup_surf.fill((0, 0, 0, 180))
+            
+            screen.blit(bg_powerup_surf, bg_powerup_rect.topleft)
+            screen.blit(next_powerup_surf, next_powerup_rect)
 
     pygame.display.flip()
 

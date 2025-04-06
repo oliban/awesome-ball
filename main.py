@@ -450,7 +450,7 @@ def draw_trophy(surface, winner_name, title_font, name_font):
     pygame.draw.rect(surface, cup_color, handle_right_rect); pygame.draw.rect(surface, BLACK, handle_right_rect, 1)
     name_surf = name_font.render(winner_name, True, engraved_color); name_rect = name_surf.get_rect(center=base_rect.center); surface.blit(name_surf, name_rect)
     title_text = "GAME WINNER!"; title_surf = title_font.render(title_text, True, YELLOW)
-    title_rect = title_surf.get_rect(center=(trophy_center_x, trophy_base_y - 220 - 100)) # Adjusted Y
+    title_rect = title_surf.get_rect(center=(trophy_center_x, trophy_base_y - 220 - 150)) # Flyttad 50px uppåt (från -100 till -150)
     bg_rect = title_rect.inflate(40, 20); bg_surf = pygame.Surface(bg_rect.size, pygame.SRCALPHA); bg_surf.fill((0, 0, 100, 200)); surface.blit(bg_surf, bg_rect.topleft)
     surface.blit(title_surf, title_rect)
     rematch_font = name_font; rematch_text = "Press R for Rematch"; rematch_surf = rematch_font.render(rematch_text, True, WHITE)
@@ -2635,7 +2635,8 @@ while running:
                 if current_game_state == "WELCOME": # Check game state
                     current_game_state = "PLAYING" # Change game state
                     start_new_game()
-                elif game_over:
+                elif current_game_state == "GAME_OVER" or game_over: # Added GAME_OVER state check
+                    current_game_state = "PLAYING" # Change back to playing
                     start_new_game()
             # Lägg till hantering för hopp och spark
             elif match_active and current_game_state == "PLAYING": 
@@ -2681,6 +2682,55 @@ while running:
     # --- Game State Logic ---
     if current_game_state == "WELCOME":
         draw_welcome_screen(screen, font_large, font_medium, font_small)
+        pygame.display.flip()
+        continue
+    elif current_game_state == "GAME_OVER":
+        # Draw game over screen with trophy
+        screen.fill(bg_color)
+        
+        # Draw stars if it's night
+        if current_time_of_day == "Night":
+            star_color = (255, 255, 220) # Pale yellow
+            for x, y in STARS:
+                size = random.randint(1, 2)
+                pygame.draw.rect(screen, star_color, (x, y, size, size))
+        
+        # Draw grass
+        pygame.draw.rect(screen, GRASS_GREEN, (0, GROUND_Y, SCREEN_WIDTH, SCREEN_HEIGHT - GROUND_Y))
+        
+        # Draw the trophy with the winner's name
+        winner_name = "Nils" if overall_winner == 1 else "Harry"
+        draw_trophy(screen, winner_name, font_large, font_medium)
+        
+        # Display game scores
+        draw_game_scores(screen, game_scores, font_small)
+        
+        # Show winner image if available, positioned to the side of the trophy
+        if winner_images.get(overall_winner):
+            # Get the primary winner image
+            winner_img = winner_images[overall_winner]
+            
+            if overall_winner == 1:  # Nils won
+                # Position Nils on both sides (same image)
+                img_rect_left = winner_img.get_rect(center=(SCREEN_WIDTH // 4, SCREEN_HEIGHT // 2))
+                img_rect_right = winner_img.get_rect(center=(SCREEN_WIDTH * 3 // 4, SCREEN_HEIGHT // 2))
+                screen.blit(winner_img, img_rect_left)
+                screen.blit(winner_img, img_rect_right)
+            else:  # Harry won
+                # Position Harry on left side
+                img_rect_left = winner_img.get_rect(center=(SCREEN_WIDTH // 4, SCREEN_HEIGHT // 2))
+                screen.blit(winner_img, img_rect_left)
+                
+                # Use harry_eats image on the right side if available
+                if winner_images.get("harry_eats"):
+                    harry_eats_img = winner_images["harry_eats"]
+                    img_rect_right = harry_eats_img.get_rect(center=(SCREEN_WIDTH * 3 // 4, SCREEN_HEIGHT // 2))
+                    screen.blit(harry_eats_img, img_rect_right)
+                else:
+                    # Fallback to the same image if harry_eats isn't available
+                    img_rect_right = winner_img.get_rect(center=(SCREEN_WIDTH * 3 // 4, SCREEN_HEIGHT // 2))
+                    screen.blit(winner_img, img_rect_right)
+                
         pygame.display.flip()
         continue
     elif current_game_state == "PLAYING":
@@ -2733,7 +2783,16 @@ while running:
             if p2_body_collision_timer > 0: p2_body_collision_timer -= 1
             if goal_message_timer > 0: goal_message_timer -= dt
             if screen_flash_timer > 0: screen_flash_timer -= dt
-
+            
+            # --- Power-up Spawning Logic ---
+            powerup_spawn_timer -= dt
+            if powerup_spawn_timer <= 0:
+                new_powerup = ParachutePowerup()
+                new_powerup.spawn()
+                active_powerups.append(new_powerup)
+                print(f"Auto-spawned powerup: {new_powerup.powerup_type} at ({new_powerup.x:.0f}, {new_powerup.y:.0f})")
+                powerup_spawn_timer = random.uniform(POWERUP_SPAWN_INTERVAL_MIN, POWERUP_SPAWN_INTERVAL_MAX)
+            
             player1.update(dt, player2); player2.update(dt, player1)
             ball_hit_ground_this_frame = ball.update(dt)
 
@@ -3250,6 +3309,34 @@ while running:
     pygame.display.flip()
 
     # Removed FPS counter code from here
+
+    # --- Handle Game Over State ---
+    if game_over and not game_over_sound_played:
+        play_sound(loaded_sounds['nils_wins'] if overall_winner == 1 else loaded_sounds['harry_wins'])
+        game_over_sound_played = True
+        # Set game state to show winning screen
+        current_game_state = "GAME_OVER"
+
+    # --- Handle Match Over State ---
+    # <<< START OF ADDED CODE >>>
+    if match_over_timer > 0:
+        match_over_timer -= dt # Decrement timer
+        if not match_end_sound_played and not game_over:
+            # Play match win sound - use combo sound instead of the main win sound
+            play_sound(loaded_sounds['combo'])
+            match_end_sound_played = True
+        
+        if match_over_timer <= 0: # Check if timer expired
+            if not game_over: # If game not over, start new match
+                start_new_match() 
+                # match_active is set to True inside start_new_match()
+            # If game IS over, we do nothing here, 
+            # the game remains in the game_over state
+    # <<< END OF ADDED CODE >>>
+
+    # --- Process Announcement Sound Queue ---
+    if announcement_queue and not pygame.mixer.get_busy():
+        play_next_announcement()
 
 # Cleanup
 pygame.quit(); sys.exit()

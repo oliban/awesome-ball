@@ -1,5 +1,12 @@
-- [X] Have the sword be in the same angle from the player no matter if the player is facing left or right
-- [X] The angle of the sword should be mirrored if comparing when facing left and when facing right
-- [X] low gravity power-up doesn't affect the gravity
-- [X] inactivate the enlarged head power-up but leave the code for it if we choose to activate it later
-- [X] The player that is hit by a rocket should be stunned for 5 seconds. The time adds up if hit by another rocket before time runs out. 
+- [X] The game freezes after a match is won, maybe relating to weather?
+- [X] Remove the ball height debug output spam in console
+- [ ] Fix so that index.html actually use the right APK that is rendered by pygbab
+- [ ] Figure out why packages are not dropping any longer and fix it
+- [ ] When a player wins the game, the game freezes up when it should show winning screen and play sounds
+- [ ] Goal sheild is not visible nor working
+- [ ] Enlarged goal - Nothing happens when I take the power-up package. Something with activating it is broken
+- [X] Added button 2 to spawn Goal enlarger power-up for debugging
+- [ ] Rocket launcher is MIA
+- [ ] Packages don't seem to be dropping by themself any more
+- [ ] The angle of the sword is not right, it must be the same angle from the player no matter withc direction the player is facing and have that mirrored when the player changes direction
+- [ ] Go through every power-up to make sure they all work properly 

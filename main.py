@@ -2959,10 +2959,17 @@ while running:
             # --- Power-up Spawning Logic ---
             powerup_spawn_timer -= dt
             if powerup_spawn_timer <= 0:
-                new_powerup = ParachutePowerup()
-                new_powerup.spawn()
-                active_powerups.append(new_powerup)
-                print(f"Auto-spawned powerup: {new_powerup.powerup_type} at ({new_powerup.x:.0f}, {new_powerup.y:.0f})")
+                if not jackpot_triggered_this_match and random.randint(1, 6) == 1: # <<< JACKPOT LOGIC!
+                    print("!!! SUPER JACKPOT !!!"); play_sound(loaded_sounds.get('super_jackpot', [])) # <<< JACKPOT LOGIC!
+                    jackpot_triggered_this_match = True # <<< JACKPOT LOGIC!
+                    for _ in range(8): # <<< JACKPOT LOGIC! (Spawns 8 powerups)
+                        new_powerup = ParachutePowerup(); new_powerup.spawn(); active_powerups.append(new_powerup)
+                    print(f"JACKPOT spawned 8 powerups!") # Added print for clarity
+                else:
+                    # Normal spawn if no jackpot
+                    new_powerup = ParachutePowerup(); new_powerup.spawn(); active_powerups.append(new_powerup)
+                    print(f"Auto-spawned powerup: {new_powerup.powerup_type} at ({new_powerup.x:.0f}, {new_powerup.y:.0f})") # Keep this print
+                # Reset timer regardless of jackpot or normal spawn
                 powerup_spawn_timer = random.uniform(POWERUP_SPAWN_INTERVAL_MIN, POWERUP_SPAWN_INTERVAL_MAX)
             
             player1.update(dt, player2); player2.update(dt, player1)

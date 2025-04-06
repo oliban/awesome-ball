@@ -932,23 +932,31 @@ class StickMan: # Updated powerup dict/handling
             print(f"Player {1 if self.facing_direction==1 else 2} stunned for {duration:.1f}s!")
             
     def start_tumble(self):
+        """Start the tumble animation."""
         if not self.is_tumbling:
-             self.is_tumbling = True; self.tumble_timer = TUMBLE_DURATION
-             self.rotation_velocity = random.uniform(PLAYER_TUMBLE_ROT_SPEED_MIN, PLAYER_TUMBLE_ROT_SPEED_MAX) * random.choice([-1, 1])
-             self.is_kicking = False; self.kick_timer = 0
+            self.is_tumbling = True
+            self.tumble_timer = TUMBLE_DURATION
+            self.rotation_velocity = random.uniform(PLAYER_TUMBLE_ROT_SPEED_MIN, PLAYER_TUMBLE_ROT_SPEED_MAX) * random.choice([-1, 1])
+            self.is_kicking = False
+            self.kick_timer = 0
+    
     def apply_powerup(self, powerup_type, other_player=None):
+        """Apply a powerup to the player."""
         current_val = self.active_powerups.get(powerup_type, 0)
+        
         if powerup_type == "FLIGHT":
-            self.active_powerups["FLIGHT"] = POWERUP_FLIGHT_DURATION; self.is_flying = True; print(f"Flight activated/refreshed: {POWERUP_FLIGHT_DURATION:.1f}s")
-        elif powerup_type == "ROCKET_LAUNCHER":
-            new_ammo = current_val + 3; self.active_powerups["ROCKET_LAUNCHER"] = new_ammo; print(f"Rocket Launcher ammo: {new_ammo}")
+            self.active_powerups["FLIGHT"] = POWERUP_FLIGHT_DURATION
+            self.is_flying = True
         elif powerup_type == "BIG_PLAYER":
-            self.active_powerups["BIG_PLAYER"] = POWERUP_BIG_PLAYER_DURATION; self.is_big = True
-            if "SHRUNK" in self.active_powerups: del self.active_powerups["SHRUNK"]; self.is_shrunk = False
-            self.calculate_current_sizes(); print(f"Big Player activated/refreshed: {POWERUP_BIG_PLAYER_DURATION:.1f}s")
+            self.active_powerups["BIG_PLAYER"] = POWERUP_BIG_PLAYER_DURATION
+            self.is_big = True
+            if "SHRUNK" in self.active_powerups:
+                del self.active_powerups["SHRUNK"]
+                self.is_shrunk = False
+            self.calculate_current_sizes()
         elif powerup_type == "SUPER_JUMP":
             self.active_powerups["SUPER_JUMP"] = POWERUP_SUPER_JUMP_DURATION
-            self.jump_power = BASE_JUMP_POWER * POWERUP_SUPER_JUMP_MULTIPLIER; print(f"Super Jump activated/refreshed: {POWERUP_SUPER_JUMP_DURATION:.1f}s")
+            self.jump_power = BASE_JUMP_POWER * POWERUP_SUPER_JUMP_MULTIPLIER
         elif powerup_type == "SPEED_BOOST":
             self.active_powerups["SPEED_BOOST"] = POWERUP_SPEED_BOOST_DURATION
             self.player_speed = BASE_PLAYER_SPEED * POWERUP_SPEED_BOOST_MULTIPLIER; print(f"Speed Boost activated/refreshed: {POWERUP_SPEED_BOOST_DURATION:.1f}s")
@@ -1366,179 +1374,469 @@ class StickMan: # Updated powerup dict/handling
     def get_body_rect(self): return self.body_rect
     
     def get_sword_position(self):
-        """Return sword data for collision detection: (tip_x, tip_y, base_x, base_y, angle)"""
-        if not self.is_sword:
+        """Return the position of the sword during attack."""
+        if not self.is_sword or not self.is_kicking:
             return None
+            
+        progress = min(self.kick_timer / self.kick_duration, 1.0)
+        sword_length = self.arm_length * 1.8
         
-        hand_pos = self.r_hand_pos if self.facing_direction == 1 else self.l_hand_pos
-        sword_len = self.torso_length * SWORD_LENGTH_FACTOR
+        # Determine sword base point (hand)
+        if self.facing_direction == 1:
+            base_x, base_y = self.right_hand_pos
+        else:
+            base_x, base_y = self.left_hand_pos
+            
+        # Calculate sword angle based on kick progress
+        if progress < 0.3:  # Wind-up
+            angle_factor = progress / 0.3
+            sword_angle = math.radians(-60 * angle_factor) * self.facing_direction
+        elif progress < 0.6:  # Strike
+            angle_factor = (progress - 0.3) / 0.3
+            sword_angle = math.radians((-60 + 150 * angle_factor)) * self.facing_direction
+        else:  # Follow through
+            angle_factor = (progress - 0.6) / 0.4
+            sword_angle = math.radians((90 - 30 * angle_factor)) * self.facing_direction
+            
+        # Calculate tip of sword
+        tip_x = base_x + math.cos(sword_angle) * sword_length
+        tip_y = base_y + math.sin(sword_angle) * sword_length
         
-        # Calculate sword tip and base positions based on hand position and sword angle
-        tip_x = hand_pos[0] + sword_len * math.cos(self.sword_angle)
-        tip_y = hand_pos[1] + sword_len * math.sin(self.sword_angle)
+        return (tip_x, tip_y, base_x, base_y, sword_angle)
+    
+    def update(self, dt, other_player):
+        # Update stun timer
+        if self.is_stunned:
+            self.stun_timer -= dt
+            if self.stun_timer <= 0:
+                self.is_stunned = False
+                self.stun_timer = 0
+                
+        # Don't process updates if stunned
+        if self.is_stunned:
+            return
+                
+        # Update tumble if active
+        if self.is_tumbling:
+            self.tumble_timer -= dt
+            if self.tumble_timer <= 0:
+                self.is_tumbling = False
+                self.tumble_timer = 0
+                self.rotation_angle = 0
+                self.rotation_velocity = 0
+            else:
+                self.rotation_angle += self.rotation_velocity * dt
+                self.rotation_velocity *= PLAYER_TUMBLE_DAMPING
+            
+        # Apply gravity
+        gravity_factor = 1.0
+        if "LOW_GRAVITY" in self.active_powerups:
+            gravity_factor = POWERUP_LOW_GRAVITY_FACTOR
+            
+        if not self.on_other_player_head and not self.on_left_crossbar and not self.on_right_crossbar:
+            if not self.is_flying or self.y < self.base_y - 150:  # Limit flight height
+                self.vy += GRAVITY * gravity_factor
         
-        return (tip_x, tip_y, hand_pos[0], hand_pos[1], self.sword_angle)
+        # Update position
+        self.x += self.vx
+        self.y += self.vy
+        
+        # Screen boundaries - Keep player in bounds
+        screen_margin = 20
+        if self.x < screen_margin:
+            self.x = screen_margin
+            self.vx = 0
+        elif self.x > SCREEN_WIDTH - screen_margin:
+            self.x = SCREEN_WIDTH - screen_margin
+            self.vx = 0
+            
+        # Ground collision
+        if self.y > self.base_y:
+            self.y = self.base_y
+            self.vy = 0
+            self.is_jumping = False
+            
+        # Update kick timer and state
+        if self.is_kicking:
+            self.kick_timer -= 1
+            if self.kick_timer <= 0:
+                self.is_kicking = False
+                
+        # Update powerups
+        powerups_to_remove = []
+        for powerup, time_left in self.active_powerups.items():
+            if isinstance(time_left, (int, float)) and time_left > 0:
+                self.active_powerups[powerup] = time_left - dt
+                if self.active_powerups[powerup] <= 0:
+                    powerups_to_remove.append(powerup)
+                    
+        for powerup in powerups_to_remove:
+            if powerup == "FLIGHT":
+                self.is_flying = False
+            elif powerup == "BIG_PLAYER":
+                self.is_big = False
+                self.calculate_current_sizes()
+            elif powerup == "SUPER_JUMP":
+                self.jump_power = BASE_JUMP_POWER
+            elif powerup == "SPEED_BOOST":
+                self.player_speed = BASE_PLAYER_SPEED
+            elif powerup == "SHRUNK":
+                self.is_shrunk = False
+                self.calculate_current_sizes()
+            elif powerup == "REVERSE_CONTROLS":
+                self.is_controls_reversed = False
+            elif powerup == "ENORMOUS_HEAD":
+                self.is_enormous_head = False
+                self.calculate_current_sizes()
+            elif powerup == "SWORD":
+                self.is_sword = False
+                
+            del self.active_powerups[powerup]
+            
+        # Check if standing on other player's head
+        if not self.is_tumbling and not other_player.is_tumbling:
+            other_head_pos, other_head_radius = other_player.get_head_position_radius()
+            player_foot_y = self.y
+            player_foot_x = self.x
+            
+            dist_x = abs(player_foot_x - other_head_pos[0])
+            dist_y = abs(player_foot_y - (other_head_pos[1] - other_head_radius))
+            
+            if (dist_x < other_head_radius - HEAD_PLATFORM_RADIUS_BUFFER and 
+                dist_y < 5 and self.vy >= 0):
+                self.y = other_head_pos[1] - other_head_radius
+                self.vy = 0
+                self.is_jumping = False
+                self.on_other_player_head = True
+            else:
+                self.on_other_player_head = False
+                
+        # Update the limb angles based on the player's state and animation
+        self.update_limb_angles(dt)
+        
+        # Update joint and limb positions based on the angles
+        self.update_positions()
+        
+    def update_limb_angles(self, dt):
+        # Walking animation state and parameters
+        is_walking = abs(self.vx) > 0.1
+        walk_speed = 0.2  # Controls animation speed
+        
+        if is_walking:
+            self.walk_cycle_timer += dt * walk_speed * 4.0  # Adjust speed for visual appeal
+            if self.walk_cycle_timer > 2 * math.pi:
+                self.walk_cycle_timer -= 2 * math.pi
+        
+        # Choose the right set of animations based on player state
+        if self.is_tumbling:
+            # Simple limb positioning during tumble
+            tumble_factor = math.sin(self.rotation_angle * 2)
+            
+            # Arms spread out 
+            self.left_arm_angle = math.radians(-45 + 15 * tumble_factor)
+            self.right_arm_angle = math.radians(45 - 15 * tumble_factor)
+            
+            # Legs spread out
+            self.left_thigh_angle = math.radians(-30 - 15 * tumble_factor)
+            self.right_thigh_angle = math.radians(30 + 15 * tumble_factor)
+            self.left_shin_angle = math.radians(15)
+            self.right_shin_angle = math.radians(-15)
+            
+        elif self.is_kicking:
+            # Kick animation
+            if self.kick_duration <= 0:
+                kick_progress = 1.0
+            else:
+                kick_progress = self.kick_timer / self.kick_duration
+            
+            # Different phases of the kick
+            if kick_progress > 0.7:  # Wind-up
+                wind_factor = (1.0 - kick_progress) / 0.3
+                if self.facing_direction == 1:  # Facing right
+                    self.right_thigh_angle = KICK_THIGH_WINDUP_ANGLE * wind_factor
+                    self.right_shin_angle = KICK_SHIN_WINDUP_ANGLE * wind_factor
+                    # Non-kicking leg stays straight
+                    self.left_thigh_angle = 0
+                    self.left_shin_angle = 0
+                else:  # Facing left
+                    self.left_thigh_angle = KICK_THIGH_WINDUP_ANGLE * wind_factor
+                    self.left_shin_angle = KICK_SHIN_WINDUP_ANGLE * wind_factor
+                    # Non-kicking leg stays straight
+                    self.right_thigh_angle = 0
+                    self.right_shin_angle = 0
+            elif kick_progress > 0.4:  # Kick execution
+                kick_factor = (0.7 - kick_progress) / 0.3
+                if self.facing_direction == 1:  # Facing right
+                    self.right_thigh_angle = KICK_THIGH_WINDUP_ANGLE + (KICK_THIGH_FOLLOW_ANGLE - KICK_THIGH_WINDUP_ANGLE) * kick_factor
+                    self.right_shin_angle = KICK_SHIN_WINDUP_ANGLE + (KICK_SHIN_IMPACT_ANGLE - KICK_SHIN_WINDUP_ANGLE) * kick_factor
+                    # Non-kicking leg stays straight
+                    self.left_thigh_angle = 0
+                    self.left_shin_angle = 0
+                else:  # Facing left
+                    self.left_thigh_angle = KICK_THIGH_WINDUP_ANGLE + (KICK_THIGH_FOLLOW_ANGLE - KICK_THIGH_WINDUP_ANGLE) * kick_factor
+                    self.left_shin_angle = KICK_SHIN_WINDUP_ANGLE + (KICK_SHIN_IMPACT_ANGLE - KICK_SHIN_WINDUP_ANGLE) * kick_factor
+                    # Non-kicking leg stays straight
+                    self.right_thigh_angle = 0
+                    self.right_shin_angle = 0
+            else:  # Follow through
+                follow_factor = kick_progress / 0.4
+                if self.facing_direction == 1:  # Facing right
+                    self.right_thigh_angle = KICK_THIGH_FOLLOW_ANGLE * (1.0 - follow_factor)
+                    self.right_shin_angle = KICK_SHIN_IMPACT_ANGLE + (KICK_SHIN_FOLLOW_ANGLE - KICK_SHIN_IMPACT_ANGLE) * follow_factor
+                    # Non-kicking leg stays straight
+                    self.left_thigh_angle = 0
+                    self.left_shin_angle = 0
+                else:  # Facing left
+                    self.left_thigh_angle = KICK_THIGH_FOLLOW_ANGLE * (1.0 - follow_factor)
+                    self.left_shin_angle = KICK_SHIN_IMPACT_ANGLE + (KICK_SHIN_FOLLOW_ANGLE - KICK_SHIN_IMPACT_ANGLE) * follow_factor
+                    # Non-kicking leg stays straight
+                    self.right_thigh_angle = 0
+                    self.right_shin_angle = 0
+            
+            # Arms during kick (simpler animation)
+            self.left_arm_angle = math.radians(-20)
+            self.right_arm_angle = math.radians(20)
+            
+        elif self.is_jumping:
+            # Jumping animation - tucked legs
+            jump_factor = min(1.0, abs(self.vy) / 10.0)
+            
+            self.left_thigh_angle = math.radians(-15 - 25 * jump_factor)
+            self.right_thigh_angle = math.radians(15 + 25 * jump_factor)
+            self.left_shin_angle = math.radians(30 * jump_factor)
+            self.right_shin_angle = math.radians(-30 * jump_factor)
+            
+            # Arms raised slightly when jumping
+            self.left_arm_angle = math.radians(-45 - 15 * jump_factor)
+            self.right_arm_angle = math.radians(45 + 15 * jump_factor)
+            
+        elif is_walking:
+            # Walking animation using walking cycle timer
+            cycle = self.walk_cycle_timer
+            
+            # Leg movements
+            self.left_thigh_angle = math.sin(cycle) * math.radians(30)
+            self.right_thigh_angle = math.sin(cycle + math.pi) * math.radians(30)
+            
+            # Shin angles based on thigh position
+            if math.sin(cycle) > 0:  # Forward swing
+                self.left_shin_angle = math.sin(cycle - math.pi/4) * math.radians(20)
+            else:  # Backward swing
+                self.left_shin_angle = math.sin(cycle + math.pi/4) * math.radians(50)
+                
+            if math.sin(cycle + math.pi) > 0:  # Forward swing
+                self.right_shin_angle = math.sin(cycle + math.pi - math.pi/4) * math.radians(20)
+            else:  # Backward swing
+                self.right_shin_angle = math.sin(cycle + math.pi + math.pi/4) * math.radians(50)
+            
+            # Arm movements (opposite to legs)
+            self.left_arm_angle = math.sin(cycle + math.pi) * math.radians(30)
+            self.right_arm_angle = math.sin(cycle) * math.radians(30)
+            
+        else:
+            # Idle stance - neutral position
+            self.left_thigh_angle = 0
+            self.right_thigh_angle = 0
+            self.left_shin_angle = 0 
+            self.right_shin_angle = 0
+            
+            # Slight arm movement in idle
+            idle_factor = math.sin(self.walk_cycle_timer * 0.5)
+            self.left_arm_angle = math.radians(-10 - 5 * idle_factor)
+            self.right_arm_angle = math.radians(10 + 5 * idle_factor)
+            
+            # Slowly increment walk cycle for idle animations
+            self.walk_cycle_timer += dt * 0.8
+            if self.walk_cycle_timer > 2 * math.pi:
+                self.walk_cycle_timer -= 2 * math.pi
+        
+    def update_positions(self):
+        # For tumbling, we don't update the skeleton structure normally
+        if self.is_tumbling:
+            # Just update the head position for collision detection
+            self.head_pos = (self.x, self.y - self.head_radius)
+            return
+            
+        # Start with head position
+        self.head_pos = (self.x, self.y - self.head_radius - self.torso_length)
+        
+        # Neck position (base of head)
+        self.neck_pos = (self.x, self.y - self.torso_length)
+        
+        # Hip position (base of torso)
+        self.hip_pos = (self.x, self.y)
+        
+        # Shoulder positions
+        shoulder_left = (self.x - self.limb_width * 0.8, self.neck_pos[1] + self.torso_length * 0.2)
+        shoulder_right = (self.x + self.limb_width * 0.8, self.neck_pos[1] + self.torso_length * 0.2)
+        
+        # Thigh joints (at hip)
+        thigh_left = (self.hip_pos[0] - self.limb_width * 0.6, self.hip_pos[1])
+        thigh_right = (self.hip_pos[0] + self.limb_width * 0.6, self.hip_pos[1])
+        
+        # Knee positions 
+        knee_angle_left = self.left_thigh_angle + (math.pi/2 if self.facing_direction < 0 else -math.pi/2)
+        knee_angle_right = self.right_thigh_angle + (math.pi/2 if self.facing_direction < 0 else -math.pi/2)
+        
+        knee_left_x = thigh_left[0] + math.cos(knee_angle_left) * self.leg_length * 0.5
+        knee_left_y = thigh_left[1] + math.sin(knee_angle_left) * self.leg_length * 0.5
+        self.left_knee_pos = (knee_left_x, knee_left_y)
+        
+        knee_right_x = thigh_right[0] + math.cos(knee_angle_right) * self.leg_length * 0.5
+        knee_right_y = thigh_right[1] + math.sin(knee_angle_right) * self.leg_length * 0.5
+        self.right_knee_pos = (knee_right_x, knee_right_y)
+        
+        # Foot positions
+        foot_angle_left = knee_angle_left + self.left_shin_angle
+        foot_angle_right = knee_angle_right + self.right_shin_angle
+        
+        foot_left_x = knee_left_x + math.cos(foot_angle_left) * self.leg_length * 0.5
+        foot_left_y = knee_left_y + math.sin(foot_angle_left) * self.leg_length * 0.5
+        self.left_foot_pos = (foot_left_x, foot_left_y)
+        
+        foot_right_x = knee_right_x + math.cos(foot_angle_right) * self.leg_length * 0.5
+        foot_right_y = knee_right_y + math.sin(foot_angle_right) * self.leg_length * 0.5
+        self.right_foot_pos = (foot_right_x, foot_right_y)
+        
+        # Elbow positions
+        elbow_angle_left = self.left_arm_angle + (math.pi/2 if self.facing_direction < 0 else -math.pi/2)
+        elbow_angle_right = self.right_arm_angle + (math.pi/2 if self.facing_direction < 0 else -math.pi/2)
+        
+        elbow_left_x = shoulder_left[0] + math.cos(elbow_angle_left) * self.arm_length * 0.5
+        elbow_left_y = shoulder_left[1] + math.sin(elbow_angle_left) * self.arm_length * 0.5
+        
+        elbow_right_x = shoulder_right[0] + math.cos(elbow_angle_right) * self.arm_length * 0.5
+        elbow_right_y = shoulder_right[1] + math.sin(elbow_angle_right) * self.arm_length * 0.5
+        
+        # Hand positions
+        hand_left_x = elbow_left_x + math.cos(elbow_angle_left) * self.arm_length * 0.5
+        hand_left_y = elbow_left_y + math.sin(elbow_angle_left) * self.arm_length * 0.5
+        self.left_hand_pos = (hand_left_x, hand_left_y)
+        
+        hand_right_x = elbow_right_x + math.cos(elbow_angle_right) * self.arm_length * 0.5
+        hand_right_y = elbow_right_y + math.sin(elbow_angle_right) * self.arm_length * 0.5
+        self.right_hand_pos = (hand_right_x, hand_right_y)
         
     def draw(self, screen):
-        # Simplified drawing using basic pygame.draw functions for performance
-        # Uses joint positions calculated in update_limbs for correct animation/pose
-
-        limb_width = max(2, int(self.limb_width * 0.5)) # Make lines visible but thin
-        head_radius = int(self.head_radius)
-
-        # Use pre-calculated positions from update_limbs if available
-        head_pos = self.head_pos if hasattr(self, 'head_pos') and self.head_pos else (int(self.x), int(self.y) - int(self.torso_length) - head_radius) # Fallback
-        neck_pos = self.neck_pos if hasattr(self, 'neck_pos') and self.neck_pos else (head_pos[0], head_pos[1] + head_radius)
-        hip_pos = self.hip_pos if hasattr(self, 'hip_pos') and self.hip_pos else (neck_pos[0], neck_pos[1] + int(self.torso_length))
-        shoulder_pos = self.shoulder_pos if hasattr(self, 'shoulder_pos') and self.shoulder_pos else neck_pos
-        l_elbow_pos = self.l_elbow_pos if hasattr(self, 'l_elbow_pos') and self.l_elbow_pos else shoulder_pos
-        l_hand_pos = self.l_hand_pos if hasattr(self, 'l_hand_pos') and self.l_hand_pos else l_elbow_pos
-        r_elbow_pos = self.r_elbow_pos if hasattr(self, 'r_elbow_pos') and self.r_elbow_pos else shoulder_pos
-        r_hand_pos = self.r_hand_pos if hasattr(self, 'r_hand_pos') and self.r_hand_pos else r_elbow_pos
-        l_knee_pos = self.l_knee_pos if hasattr(self, 'l_knee_pos') and self.l_knee_pos else hip_pos
-        l_foot_pos = self.l_foot_pos if hasattr(self, 'l_foot_pos') and self.l_foot_pos else l_knee_pos
-        r_knee_pos = self.r_knee_pos if hasattr(self, 'r_knee_pos') and self.r_knee_pos else hip_pos
-        r_foot_pos = self.r_foot_pos if hasattr(self, 'r_foot_pos') and self.r_foot_pos else r_knee_pos
-
-        # Convert positions to integers for drawing
-        head_pos_int = (int(head_pos[0]), int(head_pos[1]))
-        neck_pos_int = (int(neck_pos[0]), int(neck_pos[1]))
-        hip_pos_int = (int(hip_pos[0]), int(hip_pos[1]))
-        shoulder_pos_int = (int(shoulder_pos[0]), int(shoulder_pos[1]))
-        l_elbow_pos_int = (int(l_elbow_pos[0]), int(l_elbow_pos[1]))
-        l_hand_pos_int = (int(l_hand_pos[0]), int(l_hand_pos[1]))
-        r_elbow_pos_int = (int(r_elbow_pos[0]), int(r_elbow_pos[1]))
-        r_hand_pos_int = (int(r_hand_pos[0]), int(r_hand_pos[1]))
-        l_knee_pos_int = (int(l_knee_pos[0]), int(l_knee_pos[1]))
-        l_foot_pos_int = (int(l_foot_pos[0]), int(l_foot_pos[1]))
-        r_knee_pos_int = (int(r_knee_pos[0]), int(r_knee_pos[1]))
-        r_foot_pos_int = (int(r_foot_pos[0]), int(r_foot_pos[1]))
-
-        # Head
-        pygame.draw.circle(screen, self.team_color, head_pos_int, head_radius)
-        pygame.draw.circle(screen, self.team_accent, head_pos_int, head_radius, limb_width // 2) # Outline
-
-        # Torso
-        pygame.draw.line(screen, self.team_color, neck_pos_int, hip_pos_int, limb_width)
-
-        # Arms
-        pygame.draw.line(screen, self.team_accent, shoulder_pos_int, l_elbow_pos_int, limb_width)
-        pygame.draw.line(screen, self.team_accent, l_elbow_pos_int, l_hand_pos_int, limb_width)
-        pygame.draw.line(screen, self.team_accent, shoulder_pos_int, r_elbow_pos_int, limb_width)
-        pygame.draw.line(screen, self.team_accent, r_elbow_pos_int, r_hand_pos_int, limb_width)
-
-        # Legs
-        pygame.draw.line(screen, self.team_color, hip_pos_int, l_knee_pos_int, limb_width)
-        pygame.draw.line(screen, self.team_color, l_knee_pos_int, l_foot_pos_int, limb_width)
-        pygame.draw.line(screen, self.team_color, hip_pos_int, r_knee_pos_int, limb_width)
-        pygame.draw.line(screen, self.team_color, r_knee_pos_int, r_foot_pos_int, limb_width)
-
-        # --- Draw Stun Effect (If stunned) ---
-        if self.is_stunned:
-            stun_angle = time.time() * 4 # Simple rotation
-            center_x, head_center_y = head_pos_int # Use actual head position
-            for i in range(3): # Draw 3 rotating stars
-                angle = stun_angle + (i * 2 * math.pi / 3)
-                star_x = head_pos_int[0] + math.cos(angle) * (head_radius + 10)
-                star_y = head_center_y + math.sin(angle) * (head_radius + 10)
-                # Simple star-like shape with lines
-                star_points = []
-                for j in range(5):
-                    angle_point = angle + (j * 2 * math.pi / 5)
-                    outer_x = star_x + math.cos(angle_point) * 6
-                    outer_y = star_y + math.sin(angle_point) * 6
-                    star_points.append((int(outer_x), int(outer_y)))
-                    angle_point += math.pi / 5
-                    inner_x = star_x + math.cos(angle_point) * 3
-                    inner_y = star_y + math.sin(angle_point) * 3
-                    star_points.append((int(inner_x), int(inner_y)))
-                pygame.draw.polygon(screen, YELLOW, star_points)
-
-        # --- TODO: Add simplified drawing for powerups (wings, sword, gun) if needed ---
-
-    def get_head_position_radius(self):
-        # Simplified calculation based on the simplified draw logic
-        head_radius = int(self.head_radius)
-        torso_length = int(self.torso_length)
-        head_center_y = int(self.y) - torso_length - head_radius
-        return (int(self.x), head_center_y), head_radius
-
-    def update_limbs(self, dt, is_walking):
-        # Limb Angle Calculations based on state (walking, jumping, kicking, tumbling)
         if self.is_tumbling:
-            tumble_speed = self.rotation_velocity * 1.5; current_time_ms = pygame.time.get_ticks()
-            self.l_upper_arm_angle = math.sin(current_time_ms * 0.01 + 1) * 0.8 + tumble_speed * 0.05
-            self.r_upper_arm_angle = math.sin(current_time_ms * 0.01 + 2) * 0.8 - tumble_speed * 0.05
-            self.l_forearm_angle = math.sin(current_time_ms * 0.015 + 3) * 1.2
-            self.r_forearm_angle = math.sin(current_time_ms * 0.015 + 4) * 1.2
-            self.l_thigh_angle = math.sin(current_time_ms * 0.01 + 5) * 0.6 - tumble_speed * 0.04
-            self.r_thigh_angle = math.sin(current_time_ms * 0.01 + 6) * 0.6 + tumble_speed * 0.04
-            self.l_shin_angle = math.sin(current_time_ms * 0.015 + 7) * 1.0
-            self.r_shin_angle = math.sin(current_time_ms * 0.015 + 0) * 1.0
-        elif self.is_kicking:
-             self.walk_cycle_timer = 0; self.kick_timer += 1 # Use frame count increment
-             progress = min(self.kick_timer / self.kick_duration, 1.0)
-             windup_end = 0.20; impact_start = 0.25; impact_end = 0.50; follow_end = 1.0
-             if progress < windup_end: thigh_prog_angle = KICK_THIGH_WINDUP_ANGLE * (progress / windup_end)
-             elif progress < impact_end: impact_progress = (progress - windup_end) / (impact_end - windup_end); thigh_prog_angle = KICK_THIGH_WINDUP_ANGLE + (KICK_THIGH_FOLLOW_ANGLE - KICK_THIGH_WINDUP_ANGLE) * impact_progress
-             else: follow_progress = (progress - impact_end) / (follow_end - impact_end); ease_out_factor = 1.0 - follow_progress**1.5; thigh_prog_angle = KICK_THIGH_FOLLOW_ANGLE * ease_out_factor
-             if progress < impact_start: shin_prog_angle = KICK_SHIN_WINDUP_ANGLE * (progress / impact_start)
-             elif progress < impact_end: impact_progress = (progress - impact_start) / (impact_end - impact_start); ease_in_factor = impact_progress ** 2; shin_prog_angle = KICK_SHIN_WINDUP_ANGLE + (KICK_SHIN_IMPACT_ANGLE - KICK_SHIN_WINDUP_ANGLE) * ease_in_factor
-             else: follow_progress = (progress - impact_end) / (follow_end - impact_end); shin_prog_angle = KICK_SHIN_IMPACT_ANGLE + (KICK_SHIN_FOLLOW_ANGLE - KICK_SHIN_IMPACT_ANGLE) * follow_progress
-             kick_leg_thigh_angle = thigh_prog_angle; kick_leg_shin_angle = shin_prog_angle
-             other_leg_thigh_angle = -thigh_prog_angle * 0.1; other_leg_shin_angle = 0.1
-             if self.facing_direction == 1: self.r_thigh_angle = kick_leg_thigh_angle; self.r_shin_angle = kick_leg_shin_angle; self.l_thigh_angle = other_leg_thigh_angle; self.l_shin_angle = other_leg_shin_angle
-             else: self.l_thigh_angle = kick_leg_thigh_angle; self.l_shin_angle = kick_leg_shin_angle; self.r_thigh_angle = other_leg_thigh_angle; self.r_shin_angle = other_leg_shin_angle
-             self.l_upper_arm_angle = -thigh_prog_angle * 0.05 * self.facing_direction; self.r_upper_arm_angle = thigh_prog_angle * 0.03 * self.facing_direction
-             self.l_forearm_angle = 0.2; self.r_forearm_angle = 0.2
-             if self.kick_timer >= self.kick_duration: self.is_kicking = False; self.kick_timer = 0;
-        else: # Not kicking or tumbling
-             if is_walking:
-                 walk_sin = math.sin(self.walk_cycle_timer);
-                 self.l_upper_arm_angle = RUN_UPPER_ARM_SWING * walk_sin * self.facing_direction;
-                 self.r_upper_arm_angle = -RUN_UPPER_ARM_SWING * walk_sin * self.facing_direction;
-                 self.l_forearm_angle = RUN_FOREARM_SWING * math.sin(self.walk_cycle_timer - RUN_FOREARM_OFFSET_FACTOR) * self.facing_direction;
-                 self.r_forearm_angle = -RUN_FOREARM_SWING * math.sin(self.walk_cycle_timer - RUN_FOREARM_OFFSET_FACTOR) * self.facing_direction;
-                 self.l_thigh_angle = -LEG_THIGH_SWING * walk_sin * self.facing_direction;
-                 self.r_thigh_angle = LEG_THIGH_SWING * walk_sin * self.facing_direction;
-                 shin_bend = LEG_SHIN_BEND_WALK * max(0, math.sin(self.walk_cycle_timer + LEG_SHIN_BEND_SHIFT));
-                 self.l_shin_angle = shin_bend if self.l_thigh_angle * self.facing_direction < 0 else 0.1;
-                 self.r_shin_angle = shin_bend if self.r_thigh_angle * self.facing_direction < 0 else 0.1
-             elif self.is_jumping and not self.on_other_player_head and not self.on_left_crossbar and not self.on_right_crossbar: # Check crossbars here too
-                 base_up_angle = JUMP_UPPER_ARM_BASE - self.vy * JUMP_UPPER_ARM_VY_FACTOR;
-                 self.l_upper_arm_angle = base_up_angle; self.r_upper_arm_angle = base_up_angle;
-                 base_fore_angle = JUMP_FOREARM_BASE;
-                 self.l_forearm_angle = base_fore_angle; self.r_forearm_angle = base_fore_angle;
-                 jump_progress = max(0, min(1, 1 - (self.y / self.base_y)));
-                 thigh_tuck = JUMP_THIGH_TUCK * jump_progress; shin_tuck = JUMP_SHIN_TUCK * jump_progress;
-                 self.l_thigh_angle = thigh_tuck; self.r_thigh_angle = thigh_tuck;
-                 self.l_shin_angle = shin_tuck; self.r_shin_angle = shin_tuck
-             else: # Idle or on head/crossbar pose
-                 self.l_upper_arm_angle = 0; self.r_upper_arm_angle = 0; self.l_forearm_angle = 0; self.r_forearm_angle = 0;
-                 self.l_thigh_angle = 0; self.r_thigh_angle = 0; self.l_shin_angle = 0; self.r_shin_angle = 0
+            # Draw tumbling stick figure
+            offset_x = 0 
+            offset_y = 0
+            
+            # Rotate all coordinates around the center of the figure (hip)
+            center_x = self.x
+            center_y = self.y - self.torso_length / 2  # Center of mass
+            
+            # Save the original position for rotation
+            original_x, original_y = self.x, self.y
+            
+            # Create a rotation matrix
+            angle = self.rotation_angle
+            sin_angle = math.sin(angle)
+            cos_angle = math.cos(angle)
+            
+            # Set new point
+            rotated_x = center_x + (original_x - center_x) * cos_angle - (original_y - center_y) * sin_angle
+            rotated_y = center_y + (original_x - center_x) * sin_angle + (original_y - center_y) * cos_angle
+            
+            # Draw the tumbling figure centered at the rotated point
+            save_pos = (self.x, self.y)
+            self.x, self.y = rotated_x, rotated_y 
+            
+            # Draw a simple tumbling figure
+            pygame.draw.circle(screen, self.team_color, (rotated_x, rotated_y - self.torso_length - self.head_radius), self.head_radius)
+            pygame.draw.line(screen, self.team_color, (rotated_x, rotated_y - self.torso_length), (rotated_x, rotated_y), width=max(2, int(self.limb_width)))
+            
+            # Draw limbs
+            limb_width = max(1, int(self.limb_width * 0.8))
+            pygame.draw.line(screen, self.team_accent, (rotated_x, rotated_y - self.torso_length * 0.7), 
+                             (rotated_x - self.arm_length * 0.8, rotated_y - self.torso_length * 0.3), width=limb_width)
+            pygame.draw.line(screen, self.team_accent, (rotated_x, rotated_y - self.torso_length * 0.7), 
+                             (rotated_x + self.arm_length * 0.8, rotated_y - self.torso_length * 0.3), width=limb_width)
+            pygame.draw.line(screen, self.team_accent, (rotated_x, rotated_y), 
+                             (rotated_x - self.leg_length * 0.7, rotated_y + self.leg_length * 0.7), width=limb_width)
+            pygame.draw.line(screen, self.team_accent, (rotated_x, rotated_y), 
+                             (rotated_x + self.leg_length * 0.7, rotated_y + self.leg_length * 0.7), width=limb_width)
+            
+            # Reset position
+            self.x, self.y = save_pos
+        else:
+            # Draw the stick figure based on the joint positions
+            
+            # Draw body (torso)
+            torso_width = self.limb_width * 1.5
+            pygame.draw.line(screen, self.team_color, self.neck_pos, self.hip_pos, width=max(1, int(torso_width)))
+            
+            # Draw head
+            pygame.draw.circle(screen, self.team_color, self.head_pos, self.head_radius)
+            
+            # Draw eyes (facing direction)
+            eye_offset = self.head_radius * 0.3
+            eye_radius = max(1, int(self.head_radius * 0.2))
+            eye1_x = self.head_pos[0] + eye_offset * self.facing_direction
+            eye1_y = self.head_pos[1] - eye_offset * 0.5
+            pygame.draw.circle(screen, self.eye_color, (eye1_x, eye1_y), eye_radius)
+            
+            # Draw limbs
+            limb_width = max(1, int(self.limb_width))
+            
+            # Draw arms 
+            # Left arm parts
+            pygame.draw.line(screen, self.team_accent, 
+                            (self.x - self.limb_width * 0.8, self.neck_pos[1] + self.torso_length * 0.2), 
+                            self.left_hand_pos, width=limb_width)
+            
+            # Right arm parts
+            pygame.draw.line(screen, self.team_accent, 
+                            (self.x + self.limb_width * 0.8, self.neck_pos[1] + self.torso_length * 0.2), 
+                            self.right_hand_pos, width=limb_width)
+            
+            # Draw legs
+            pygame.draw.line(screen, self.team_accent, 
+                            (self.hip_pos[0] - self.limb_width * 0.6, self.hip_pos[1]), 
+                            self.left_knee_pos, width=limb_width)
+            pygame.draw.line(screen, self.team_accent, 
+                            self.left_knee_pos, self.left_foot_pos, width=limb_width)
+            
+            pygame.draw.line(screen, self.team_accent, 
+                            (self.hip_pos[0] + self.limb_width * 0.6, self.hip_pos[1]), 
+                            self.right_knee_pos, width=limb_width)
+            pygame.draw.line(screen, self.team_accent, 
+                            self.right_knee_pos, self.right_foot_pos, width=limb_width)
+            
+            # Draw sword if active
+            if self.is_sword and self.is_kicking:
+                sword_data = self.get_sword_position()
+                if sword_data:
+                    tip_x, tip_y, base_x, base_y, angle = sword_data
+                    
+                    # Draw sword as a rect
+                    sword_length = self.arm_length * 1.8
+                    sword_width = self.limb_width * 1.2
+                    
+                    # Draw the sword rectangle
+                    draw_rotated_rectangle(screen, (200, 200, 220), 
+                                          ((tip_x + base_x) / 2, (tip_y + base_y) / 2),
+                                          sword_length, sword_width, angle)
+                    
+                    # Draw sword tip
+                    pygame.draw.circle(screen, (150, 150, 170), (tip_x, tip_y), sword_width/2)
+                    
+    def randomize_nose(self):
+        """Placeholder for compatibility with the StickMan class."""
+        pass
 
-        # Calculate Joint Positions (This part must always run to update positions)
-        current_y = self.y; current_x = self.x
-        total_leg_visual_height = self.thigh_length + self.shin_length
-        self.hip_pos = (current_x, current_y - total_leg_visual_height)
-        upper_body_x = current_x
-        self.neck_pos = (upper_body_x, self.hip_pos[1] - self.torso_length)
-        self.head_pos = (upper_body_x, self.neck_pos[1] - self.head_radius)
-        self.shoulder_pos = self.neck_pos
-        # Arms
-        l_elbow_x = self.shoulder_pos[0] + self.upper_arm_length * math.sin(self.l_upper_arm_angle); l_elbow_y = self.shoulder_pos[1] + self.upper_arm_length * math.cos(self.l_upper_arm_angle); self.l_elbow_pos = (l_elbow_x, l_elbow_y);
-        l_hand_angle_world = self.l_upper_arm_angle + self.l_forearm_angle; l_hand_x = self.l_elbow_pos[0] + self.forearm_length * math.sin(l_hand_angle_world); l_hand_y = self.l_elbow_pos[1] + self.forearm_length * math.cos(l_hand_angle_world); self.l_hand_pos = (l_hand_x, l_hand_y);
-        r_elbow_x = self.shoulder_pos[0] + self.upper_arm_length * math.sin(self.r_upper_arm_angle); r_elbow_y = self.shoulder_pos[1] + self.upper_arm_length * math.cos(self.r_upper_arm_angle); self.r_elbow_pos = (r_elbow_x, r_elbow_y);
-        r_hand_angle_world = self.r_upper_arm_angle + self.r_forearm_angle; r_hand_x = self.r_elbow_pos[0] + self.forearm_length * math.sin(r_hand_angle_world); r_hand_y = self.r_elbow_pos[1] + self.forearm_length * math.cos(r_hand_angle_world); self.r_hand_pos = (r_hand_x, r_hand_y);
-        # Legs
-        l_knee_x = self.hip_pos[0] + self.thigh_length * math.sin(self.l_thigh_angle); l_knee_y = self.hip_pos[1] + self.thigh_length * math.cos(self.l_thigh_angle); self.l_knee_pos = (l_knee_x, l_knee_y);
-        l_foot_angle_world = self.l_thigh_angle + self.l_shin_angle; l_foot_x = self.l_knee_pos[0] + self.shin_length * math.sin(l_foot_angle_world); l_foot_y = self.l_knee_pos[1] + self.shin_length * math.cos(l_foot_angle_world); self.l_foot_pos = (l_foot_x, l_foot_y);
-        r_knee_x = self.hip_pos[0] + self.thigh_length * math.sin(self.r_thigh_angle); r_knee_y = self.hip_pos[1] + self.thigh_length * math.cos(self.r_thigh_angle); self.r_knee_pos = (r_knee_x, r_knee_y);
-        r_foot_angle_world = self.r_thigh_angle + self.r_shin_angle; r_foot_x = self.r_knee_pos[0] + self.shin_length * math.sin(r_foot_angle_world); r_foot_y = self.r_knee_pos[1] + self.shin_length * math.cos(r_foot_angle_world); self.r_foot_pos = (r_foot_x, r_foot_y);
-        # Body Rect
-        body_width = self.limb_width * 1.5
-        self.body_rect.width = int(body_width); self.body_rect.height = max(1, int(self.hip_pos[1] - self.neck_pos[1])); self.body_rect.centerx = int(self.hip_pos[0]); self.body_rect.top = int(self.neck_pos[1])
-
+def start_new_game(): # Full reset
+    global p1_games_won, p2_games_won, game_scores, game_over, overall_winner, announcement_queue, game_over_sound_played, active_powerups
+    global player1, player2 # Add player instances to global
+    
+    # Create new SimpleStickMan instances instead of StickMan
+    player1 = simple_player.SimpleStickMan(SCREEN_WIDTH // 4, GROUND_Y, facing=1, team_color=P1_COLOR_MAIN, team_accent=P1_COLOR_ACCENT)
+    player2 = simple_player.SimpleStickMan(SCREEN_WIDTH * 3 // 4, GROUND_Y, facing=-1, team_color=P2_COLOR_MAIN, team_accent=P2_COLOR_ACCENT)
+    
+    p1_games_won = 0; p2_games_won = 0; game_scores = []; game_over = False; overall_winner = None; game_over_sound_played = False
+    active_powerups = []
+    announcement_queue = []; start_new_match(); print("Starting new game.")
 
 # --- Ball Class ---
 # ... (Ball class unchanged) ...
@@ -1959,8 +2257,8 @@ loaded_sounds = load_sounds()
 # --- Player/Ball/Font/Powerup Setup ---
 active_powerups = []
 # Pass team colors during instantiation
-player1 = StickMan(SCREEN_WIDTH // 4, GROUND_Y, facing=1, team_color=P1_COLOR_MAIN, team_accent=P1_COLOR_ACCENT)
-player2 = StickMan(SCREEN_WIDTH * 3 // 4, GROUND_Y, facing=-1, team_color=P2_COLOR_MAIN, team_accent=P2_COLOR_ACCENT) # Pass P2 colors
+player1 = simple_player.SimpleStickMan(SCREEN_WIDTH // 4, GROUND_Y, facing=1, team_color=P1_COLOR_MAIN, team_accent=P1_COLOR_ACCENT)
+player2 = simple_player.SimpleStickMan(SCREEN_WIDTH * 3 // 4, GROUND_Y, facing=-1, team_color=P2_COLOR_MAIN, team_accent=P2_COLOR_ACCENT) # Pass P2 colors
 player_list = [player1, player2]
 ball = Ball(SCREEN_WIDTH // 2, GROUND_Y - 20, 15)
 font_large = pygame.font.Font(None, 50); font_medium = pygame.font.Font(None, 36); font_small = pygame.font.Font(None, 28)
@@ -2306,12 +2604,12 @@ def draw_welcome_screen(screen, font_large, font_medium, font_small):
     player_y = p1_bg_rect.bottom + 50  # Position players below control boxes
     
     # Player 1 (Nils)
-    player1_demo = StickMan(p1_x, player_y, facing=1, team_color=P1_COLOR_MAIN, team_accent=P1_COLOR_ACCENT)
+    player1_demo = simple_player.SimpleStickMan(p1_x, player_y, facing=1, team_color=P1_COLOR_MAIN, team_accent=P1_COLOR_ACCENT)
     player1_demo.update = lambda dt, other: None  # Disable update method
     player1_demo.draw(screen)
     
     # Player 2 (Harry)
-    player2_demo = StickMan(p2_x, player_y, facing=-1, team_color=P2_COLOR_MAIN, team_accent=P2_COLOR_ACCENT)
+    player2_demo = simple_player.SimpleStickMan(p2_x, player_y, facing=-1, team_color=P2_COLOR_MAIN, team_accent=P2_COLOR_ACCENT)
     player2_demo.update = lambda dt, other: None  # Disable update method
     player2_demo.draw(screen)
     

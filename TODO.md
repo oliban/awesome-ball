@@ -1,5 +1,7 @@
 - [X] The game freezes after a match is won, maybe relating to weather?
 - [X] Remove the ball height debug output spam in console
+- [ ] Figure out why packages are not dropping any longer and fix it
+- [ ] Move logic in simple_player.py into main.py. Do not change any logic, only move the code into main.py and make sure it will work. I only want the simple player model used and I don't want code in any other files than main.py
 - [ ] Fix so that index.html actually use the right APK that is rendered by pygbab
 - [ ] Figure out why packages are not dropping any longer and fix it
 - [ ] When a player wins the game, the game freezes up when it should show winning screen and play sounds

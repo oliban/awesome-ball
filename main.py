@@ -430,7 +430,7 @@ def draw_trophy(surface, winner_name, title_font, name_font):
     pygame.draw.rect(surface, cup_color, handle_right_rect); pygame.draw.rect(surface, BLACK, handle_right_rect, 1)
     name_surf = name_font.render(winner_name, True, engraved_color); name_rect = name_surf.get_rect(center=base_rect.center); surface.blit(name_surf, name_rect)
     title_text = "GAME WINNER!"; title_surf = title_font.render(title_text, True, YELLOW)
-    title_rect = title_surf.get_rect(center=(trophy_center_x, trophy_base_y - 220 - 100)) # Adjusted Y
+    title_rect = title_surf.get_rect(center=(trophy_center_x, trophy_base_y - 220 - 150)) # Flyttad 50px uppåt (från -100 till -150)
     bg_rect = title_rect.inflate(40, 20); bg_surf = pygame.Surface(bg_rect.size, pygame.SRCALPHA); bg_surf.fill((0, 0, 100, 200)); surface.blit(bg_surf, bg_rect.topleft)
     surface.blit(title_surf, title_rect)
     rematch_font = name_font; rematch_text = "Press R for Rematch"; rematch_surf = rematch_font.render(rematch_text, True, WHITE)
@@ -2789,7 +2789,8 @@ while running:
                 if current_game_state == "WELCOME": # Check game state
                     current_game_state = "PLAYING" # Change game state
                     start_new_game()
-                elif game_over:
+                elif current_game_state == "GAME_OVER" or game_over: # Added GAME_OVER state check
+                    current_game_state = "PLAYING" # Change back to playing
                     start_new_game()
             # Debug-mode power-up selection and spawning
             elif debug_mode and match_active and event.key == pygame.K_v:
@@ -2855,6 +2856,55 @@ while running:
         draw_welcome_screen(screen, font_large, font_medium, font_small)
         pygame.display.flip()
         continue
+    elif current_game_state == "GAME_OVER":
+        # Draw game over screen with trophy
+        screen.fill(bg_color)
+        
+        # Draw stars if it's night
+        if current_time_of_day == "Night":
+            star_color = (255, 255, 220) # Pale yellow
+            for x, y in STARS:
+                size = random.randint(1, 2)
+                pygame.draw.rect(screen, star_color, (x, y, size, size))
+        
+        # Draw grass
+        pygame.draw.rect(screen, GRASS_GREEN, (0, GROUND_Y, SCREEN_WIDTH, SCREEN_HEIGHT - GROUND_Y))
+        
+        # Draw the trophy with the winner's name
+        winner_name = "Nils" if overall_winner == 1 else "Harry"
+        draw_trophy(screen, winner_name, font_large, font_medium)
+        
+        # Display game scores
+        draw_game_scores(screen, game_scores, font_small)
+        
+        # Show winner image if available, positioned to the side of the trophy
+        if winner_images.get(overall_winner):
+            # Get the primary winner image
+            winner_img = winner_images[overall_winner]
+            
+            if overall_winner == 1:  # Nils won
+                # Position Nils on both sides (same image)
+                img_rect_left = winner_img.get_rect(center=(SCREEN_WIDTH // 4, SCREEN_HEIGHT // 2))
+                img_rect_right = winner_img.get_rect(center=(SCREEN_WIDTH * 3 // 4, SCREEN_HEIGHT // 2))
+                screen.blit(winner_img, img_rect_left)
+                screen.blit(winner_img, img_rect_right)
+            else:  # Harry won
+                # Position Harry on left side
+                img_rect_left = winner_img.get_rect(center=(SCREEN_WIDTH // 4, SCREEN_HEIGHT // 2))
+                screen.blit(winner_img, img_rect_left)
+                
+                # Use harry_eats image on the right side if available
+                if winner_images.get("harry_eats"):
+                    harry_eats_img = winner_images["harry_eats"]
+                    img_rect_right = harry_eats_img.get_rect(center=(SCREEN_WIDTH * 3 // 4, SCREEN_HEIGHT // 2))
+                    screen.blit(harry_eats_img, img_rect_right)
+                else:
+                    # Fallback to the same image if harry_eats isn't available
+                    img_rect_right = winner_img.get_rect(center=(SCREEN_WIDTH * 3 // 4, SCREEN_HEIGHT // 2))
+                    screen.blit(winner_img, img_rect_right)
+                
+        pygame.display.flip()
+        continue
     elif current_game_state == "PLAYING":
         # --- State-based Input Handling (Movement) --- ADD THIS BLOCK INSIDE PLAYING STATE
         if match_active: # Check if match is active first
@@ -2905,7 +2955,16 @@ while running:
             if p2_body_collision_timer > 0: p2_body_collision_timer -= 1
             if goal_message_timer > 0: goal_message_timer -= dt
             if screen_flash_timer > 0: screen_flash_timer -= dt
-
+            
+            # --- Power-up Spawning Logic ---
+            powerup_spawn_timer -= dt
+            if powerup_spawn_timer <= 0:
+                new_powerup = ParachutePowerup()
+                new_powerup.spawn()
+                active_powerups.append(new_powerup)
+                print(f"Auto-spawned powerup: {new_powerup.powerup_type} at ({new_powerup.x:.0f}, {new_powerup.y:.0f})")
+                powerup_spawn_timer = random.uniform(POWERUP_SPAWN_INTERVAL_MIN, POWERUP_SPAWN_INTERVAL_MAX)
+            
             player1.update(dt, player2); player2.update(dt, player1)
             ball_hit_ground_this_frame = ball.update(dt)
 
@@ -3463,26 +3522,6 @@ while running:
             counts_text = debug_font.render(f"Particles: {len(particles)}, Powerups: {len(active_powerups)}, Rockets: {len(active_rockets)}", True, (180, 180, 180))
             screen.blit(counts_text, (20, 145))
 
-    # Draw Version and Timestamp (Always visible)
-    debug_font = font_small # Use the small font
-    version_text = f"Debug Version: {DEBUG_VERSION}"
-    timestamp_text = f"Build: {BUILD_TIMESTAMP}"
-    version_surf = debug_font.render(version_text, True, WHITE)
-    timestamp_surf = debug_font.render(timestamp_text, True, WHITE)
-    version_rect = version_surf.get_rect(bottomleft=(10, SCREEN_HEIGHT - 10))
-    timestamp_rect = timestamp_surf.get_rect(bottomleft=(10, SCREEN_HEIGHT - 10 - version_rect.height - 2))
-
-    # Optional: Add background for readability
-    combined_height = version_rect.height + timestamp_rect.height + 4
-    max_width = max(version_rect.width, timestamp_rect.width) + 20
-    bg_debug_rect = pygame.Rect(5, SCREEN_HEIGHT - 5 - combined_height, max_width, combined_height)
-    bg_debug_surf = pygame.Surface(bg_debug_rect.size, pygame.SRCALPHA)
-    bg_debug_surf.fill((0, 0, 0, 150))
-    screen.blit(bg_debug_surf, bg_debug_rect.topleft)
-
-    screen.blit(timestamp_surf, timestamp_rect)
-    screen.blit(version_surf, version_rect)
-
     # Draw FPS Counter (Moved to correct location before flip)
     if current_game_state == "PLAYING" and debug_mode: # Only draw FPS during gameplay AND in debug mode
         fps_text = f"FPS: {last_fps:.0f}"
@@ -3494,6 +3533,18 @@ while running:
         bg_fps_surf.fill((0, 0, 0, 120))
         screen.blit(bg_fps_surf, bg_fps_rect.topleft)
         screen.blit(fps_surf, fps_rect)
+        
+        # Display build timestamp under FPS
+        timestamp_text = f"Build: {BUILD_TIMESTAMP}"
+        timestamp_surf = font_fps.render(timestamp_text, True, WHITE)
+        timestamp_rect = timestamp_surf.get_rect(topright=(SCREEN_WIDTH - 10, fps_rect.bottom + 2))
+        
+        # Add background for timestamp
+        bg_timestamp_rect = timestamp_rect.inflate(6, 4)
+        bg_timestamp_surf = pygame.Surface(bg_timestamp_rect.size, pygame.SRCALPHA)
+        bg_timestamp_surf.fill((0, 0, 0, 120))
+        screen.blit(bg_timestamp_surf, bg_timestamp_rect.topleft)
+        screen.blit(timestamp_surf, timestamp_rect)
         
         # Visa nästa power-up som kan spawnas med B
         if match_active:
@@ -3511,30 +3562,6 @@ while running:
             screen.blit(bg_powerup_surf, bg_powerup_rect.topleft)
             screen.blit(next_powerup_surf, next_powerup_rect)
 
-    # Draw Debug Version and Timestamp (Only in debug mode)
-    if debug_mode:
-        debug_font_small = pygame.font.Font(None, 20) # Use a smaller font
-        version_text = f"v{DEBUG_VERSION}"
-        timestamp_text = f"{BUILD_TIMESTAMP}"
-        version_surf = debug_font_small.render(version_text, True, WHITE)
-        timestamp_surf = debug_font_small.render(timestamp_text, True, WHITE)
-        
-        # Position below FPS counter
-        version_rect = version_surf.get_rect(topright=(SCREEN_WIDTH - 10, fps_rect.bottom + 2))
-        timestamp_rect = timestamp_surf.get_rect(topright=(SCREEN_WIDTH - 10, version_rect.bottom + 2))
-
-        # Optional: Background for readability
-        combined_height_debug = version_rect.height + timestamp_rect.height + 4
-        max_width_debug = max(version_rect.width, timestamp_rect.width) + 10
-        bg_debug_info_rect = pygame.Rect(0, 0, max_width_debug, combined_height_debug)
-        bg_debug_info_rect.topright = (SCREEN_WIDTH - 5, fps_rect.bottom)
-        bg_debug_info_surf = pygame.Surface(bg_debug_info_rect.size, pygame.SRCALPHA)
-        bg_debug_info_surf.fill((0, 0, 0, 120)) # Same background as FPS
-        screen.blit(bg_debug_info_surf, bg_debug_info_rect.topleft)
-        
-        screen.blit(version_surf, version_rect)
-        screen.blit(timestamp_surf, timestamp_rect)
-
     pygame.display.flip()
 
     # Removed FPS counter code from here
@@ -3543,14 +3570,16 @@ while running:
     if game_over and not game_over_sound_played:
         play_sound(loaded_sounds['nils_wins'] if overall_winner == 1 else loaded_sounds['harry_wins'])
         game_over_sound_played = True
+        # Set game state to show winning screen
+        current_game_state = "GAME_OVER"
 
     # --- Handle Match Over State ---
     # <<< START OF ADDED CODE >>>
     if match_over_timer > 0:
         match_over_timer -= dt # Decrement timer
         if not match_end_sound_played and not game_over:
-            # Play win sound only if game isn't completely over
-            play_sound(loaded_sounds['nils_wins'] if match_winner == 1 else loaded_sounds['harry_wins'])
+            # Play match win sound - use combo sound instead of the main win sound
+            play_sound(loaded_sounds['combo'])
             match_end_sound_played = True
         
         if match_over_timer <= 0: # Check if timer expired

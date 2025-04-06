@@ -1,8 +1,10 @@
 - [X] The game freezes after a match is won, maybe relating to weather?
 - [X] Remove the ball height debug output spam in console
 - [ ] Fix so that index.html actually use the right APK that is rendered by pygbab
+- [ ] Figure out why packages are not dropping any longer and fix it
+- [ ] When a player wins the game, the game freezes up when it should show winning screen and play sounds
 - [ ] Goal sheild is not visible nor working
-- [ ] Enlarged goal, no effect
+- [ ] Enlarged goal - Nothing happens when I take the power-up package. Something with activating it is broken
 - [X] Added button 2 to spawn Goal enlarger power-up for debugging
 - [ ] Rocket launcher is MIA
 - [ ] Packages don't seem to be dropping by themself any more

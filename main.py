@@ -12,7 +12,8 @@ from datetime import datetime
 import pygame
 
 # --- Get Timestamp ---
-GENERATION_TIMESTAMP = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+# GENERATION_TIMESTAMP = datetime.now().strftime("%Y-%m-%d %H:%M:%S") # Keep existing or use build time?
+BUILD_TIMESTAMP = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") # Use a format suitable for filenames/debug
 
 # --- Constants ---
 SCREEN_WIDTH = 800; SCREEN_HEIGHT = 600; FPS = 60
@@ -2844,6 +2845,36 @@ while running:
                         if p.weather_type == "WINDY":
                             p.speed = random.uniform(100, 200) * WEATHER_WIND_DIRECTION  # Ta bort negativa tecknet här också
 
+            # --- Update Global Powerup Timers --- (Re-inserted)
+            if ball_freeze_timer > 0:
+                ball_freeze_timer -= dt
+                if ball_freeze_timer <= 0:
+                    # Unfreeze logic (apply accumulated momentum)
+                    ball.is_frozen = False
+                    ball.freeze_effect_timer = POWERUP_BALL_FREEZE_DURATION * 0.1 # Start fade out
+                    # Apply accumulated forces when unfreezing
+                    ball.vx = ball.accumulated_vx 
+                    ball.vy = ball.accumulated_vy
+                    ball.accumulated_vx = 0.0 # Reset accumulated momentum
+                    ball.accumulated_vy = 0.0
+                    print(f"Ball un-frozen! Applied momentum: vx={ball.vx:.1f}, vy={ball.vy:.1f}")
+            
+            if p1_shield_timer > 0:
+                p1_shield_timer -= dt
+                if p1_shield_timer <= 0: p1_shield_active = False; print("P1 Shield down")
+            
+            if p2_shield_timer > 0:
+                p2_shield_timer -= dt
+                if p2_shield_timer <= 0: p2_shield_active = False; print("P2 Shield down")
+            
+            if p1_goal_enlarged_timer > 0:
+                p1_goal_enlarged_timer -= dt
+                if p1_goal_enlarged_timer <= 0: print("P1 Goal back to normal size")
+            
+            if p2_goal_enlarged_timer > 0:
+                p2_goal_enlarged_timer -= dt
+                if p2_goal_enlarged_timer <= 0: print("P2 Goal back to normal size")
+
             # --- Power-up Collection ---
             collected_powerups_indices = [] # ... (unchanged logic including BALL_FREEZE trigger) ...
             for i, pup in enumerate(active_powerups):
@@ -3355,21 +3386,19 @@ while running:
         screen.blit(bg_timestamp_surf, bg_timestamp_rect.topleft)
         screen.blit(timestamp_surf, timestamp_rect)
         
-        # Visa nästa power-up som kan spawnas med B
-        if match_active:
-            selected_powerup = POWERUP_TYPES[selected_powerup_index]
-            powerup_color = powerup_colors.get(selected_powerup, WHITE)
-            next_powerup_text = f"Nästa power-up (V=byt, B=spawna): {selected_powerup}"
-            next_powerup_surf = font_fps.render(next_powerup_text, True, powerup_color)
-            next_powerup_rect = next_powerup_surf.get_rect(midbottom=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 10))
-            
-            # Bakgrund för läsbarhet
-            bg_powerup_rect = next_powerup_rect.inflate(20, 8)
-            bg_powerup_surf = pygame.Surface(bg_powerup_rect.size, pygame.SRCALPHA)
-            bg_powerup_surf.fill((0, 0, 0, 180))
-            
-            screen.blit(bg_powerup_surf, bg_powerup_rect.topleft)
-            screen.blit(next_powerup_surf, next_powerup_rect)
+        # Visa nästa power-up som kan spawnas med B (Removing this debug feature)
+        # if match_active:
+        #     selected_powerup = POWERUP_TYPES[selected_powerup_index]
+        #     next_powerup_text = f"Next (B): {selected_powerup}"
+        #     next_powerup_surf = font_fps.render(next_powerup_text, True, WHITE)
+        #     next_powerup_rect = next_powerup_surf.get_rect(topright=(SCREEN_WIDTH - 10, timestamp_rect.bottom + 2))
+        #     
+        #     # Add background for next powerup text
+        #     bg_powerup_rect = next_powerup_rect.inflate(6, 4)
+        #     bg_powerup_surf = pygame.Surface(bg_powerup_rect.size, pygame.SRCALPHA)
+        #     bg_powerup_surf.fill((0, 0, 0, 120))
+        #     screen.blit(bg_powerup_surf, bg_powerup_rect.topleft)
+        #     screen.blit(next_powerup_surf, next_powerup_rect)
 
     pygame.display.flip()
 

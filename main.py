@@ -116,7 +116,14 @@ DEBUG_BG_COLOR = (220, 180, 255)
 DEBUG_MATCH_POINT_LIMIT = 1
 
 # --- Weather Effect Constants ---
-WEATHER_TYPES = ["SUNNY", "RAINY", "WINDY", "SNOWY", "FOGGY", "GOTHENBURG_WEATHER"]
+WEATHER_TYPES = [ # Added list of possible weather types
+    "SUNNY",
+    "RAINY",
+    "WINDY",
+    "SNOWY",
+    # "FOGGY", # <<< Temporarily disabled
+    # "GOTHENBURG_WEATHER" # <<< Temporarily disabled
+]
 WEATHER_EFFECTS = {
     "SUNNY": {"gravity": 1.0, "background_color": (135, 206, 235)},  # Normal conditions
     "RAINY": {"gravity": 1.05, "background_color": (100, 149, 180)},  # Wet conditions

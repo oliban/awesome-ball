@@ -1,14 +1,13 @@
 - [X] The game freezes after a match is won, maybe relating to weather?
 - [X] Remove the ball height debug output spam in console
-- [ ] Figure out why packages are not dropping any longer and fix it
+- [X] Figure out why packages are not dropping any longer and fix it
+- [X] When a player wins the game, the game freezes up when it should show winning screen and play sounds
+- [ ] When a player wins his first game, sounds playing are nils_lead and 1 but not followed by 0. When further goals are scored, this works as it should so it's only when the very first goal is scored the bug is.
 - [ ] Move logic in simple_player.py into main.py. Do not change any logic, only move the code into main.py and make sure it will work. I only want the simple player model used and I don't want code in any other files than main.py
 - [ ] Fix so that index.html actually use the right APK that is rendered by pygbab
-- [ ] Figure out why packages are not dropping any longer and fix it
-- [ ] When a player wins the game, the game freezes up when it should show winning screen and play sounds
 - [ ] Goal sheild is not visible nor working
 - [ ] Enlarged goal - Nothing happens when I take the power-up package. Something with activating it is broken
 - [X] Added button 2 to spawn Goal enlarger power-up for debugging
 - [ ] Rocket launcher is MIA
-- [ ] Packages don't seem to be dropping by themself any more
 - [ ] The angle of the sword is not right, it must be the same angle from the player no matter withc direction the player is facing and have that mirrored when the player changes direction
 - [ ] Go through every power-up to make sure they all work properly 

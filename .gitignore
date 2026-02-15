@@ -1,0 +1,6 @@
+build/
+awesome-ball-builds/
+*.apk
+.DS_Store
+__pycache__/
+.claude/
